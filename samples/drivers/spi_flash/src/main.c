@@ -204,21 +204,48 @@ void multi_sector_test(const struct device *flash_dev)
 }
 #endif
 
+#define FLASH_DEVICE DT_LABEL(DT_INST(0, jedec_spi_nor))
+
 int main(void)
 {
-	const struct device *flash_dev = DEVICE_DT_GET_ONE(SPI_FLASH_COMPAT);
+ 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-	if (!device_is_ready(flash_dev)) {
-		printk("%s: device not ready.\n", flash_dev->name);
-		return 0;
+	const struct device *spi_dev = DEVICE_DT_GET_ONE(xlnx_mxic_uefc_spi);
+
+
+	const struct device *flash_dev = DEVICE_DT_GET_ONE(jedec_spi_nor);
+
+	if (!spi_dev) {
+ 		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+		return;
 	}
 
-	printf("\n%s SPI flash testing\n", flash_dev->name);
-	printf("==========================\n");
+	if (!flash_dev) {
+ 		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+		return;
+	}
 
-	single_sector_test(flash_dev);
-#if defined SPI_FLASH_MULTI_SECTOR_TEST
-	multi_sector_test(flash_dev);
-#endif
+
+	device_init(spi_dev);
+ 		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
+
+	device_init(flash_dev);
+
+
+// const struct device *flash_dev = DEVICE_DT_GET_ONE(SPI_FLASH_COMPAT);
+
+// 	if (!device_is_ready(flash_dev)) {
+// 		printk("%s: device not ready.\n", flash_dev->name);
+// 		return 0;
+// 	}
+
+// 	printf("\n%s SPI flash testing\n", flash_dev->name);
+// 	printf("==========================\n");
+
+// 	single_sector_test(flash_dev);
+// #if defined SPI_FLASH_MULTI_SECTOR_TEST
+// 	multi_sector_test(flash_dev);
+// #endif
 	return 0;
 }

@@ -1612,12 +1612,13 @@ static int spi_nor_pm_control(const struct device *dev, enum pm_device_action ac
  */
 static int spi_nor_init(const struct device *dev)
 {
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	if (IS_ENABLED(CONFIG_MULTITHREADING)) {
 		struct spi_nor_data *const driver_data = dev->data;
 
 		k_sem_init(&driver_data->sem, 1, K_SEM_MAX_LIMIT);
 	}
-
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 #if ANY_INST_HAS_WP_GPIOS
 	if (DEV_CFG(dev)->wp_gpios_exist) {
 		if (!device_is_ready(DEV_CFG(dev)->wp.port)) {
@@ -1642,7 +1643,7 @@ static int spi_nor_init(const struct device *dev)
 		}
 	}
 #endif /* ANY_INST_HAS_HOLD_GPIOS */
-
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	return pm_device_driver_init(dev, spi_nor_pm_control);
 }
 

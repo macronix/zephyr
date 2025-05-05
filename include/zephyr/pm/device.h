@@ -716,13 +716,13 @@ static inline bool pm_device_is_powered(const struct device *dev)
 static inline int pm_device_driver_init(const struct device *dev, pm_device_action_cb_t action_cb)
 {
 	int rc;
-
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	/* When power management is not enabled, all drivers should initialise to active state */
 	rc = action_cb(dev, PM_DEVICE_ACTION_TURN_ON);
 	if ((rc < 0) && (rc != -ENOTSUP)) {
 		return rc;
 	}
-
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	rc = action_cb(dev, PM_DEVICE_ACTION_RESUME);
 	if (rc < 0) {
 		return rc;
