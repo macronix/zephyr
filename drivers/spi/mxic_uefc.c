@@ -538,9 +538,33 @@ enum HC_XFER_MODE_TYPE {
 #define UPDATE_WRITE(_mask, _value, _reg) \
 	MXIC_WR32(((_value) | (MXIC_RD32(_reg) & ~(_mask))), (_reg))
 
+#define SPI_DATA(dev)                   ((struct mxic_uefc_data *) ((dev)->data))
+#define SPI_CFG(dev)                    ((struct mxic_uefc_config *) ((dev)->config))
+#define DIR_IN 0
+#define DIR_OUT 1
+
+struct mxic_uefc_data {
+	DEVICE_MMIO_RAM;
+	uint8_t dir:1,
+
+   dqs:1,
+   word_mode:1,
+   poll_en:1;
+};
+
+struct mxic_uefc_config {
+	DEVICE_MMIO_ROM;
+};
+
+static struct mxic_uefc_data mxic_uefc_data_0;
+
+static struct mxic_uefc_config mxic_uefc_config_0 = {
+	DEVICE_MMIO_ROM_INIT(DT_DRV_INST(0))
+};
+
 static uint32_t mxic_uefc_conf(const struct device *dev);
 int fmsb32(uint32_t bits);
-static int mxic_uefc_hc_setup(const struct device *dev);
+static int mxic_uefc_hc_setup(const struct device *dev,  uint32_t ch_lun_port);
 static int mxic_uefc_poll_hc_reg(const struct device *dev, uint32_t reg, uint32_t mask);
 static int mxic_uefc_io_mode_xfer(const struct device *dev, void *tx, void *rx, uint32_t len);
 static void mxic_uefc_cs_end(const struct device *dev);
@@ -580,7 +604,7 @@ int fmsb32(uint32_t bits)
 	return n - 1;
 }
 
-static int mxic_uefc_hc_setup(const struct device *dev)
+static int mxic_uefc_hc_setup(const struct device *dev, uint32_t ch_lun_port)
 {
 	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
 	int dev_ctrl_type = DEV_CTRL_TYPE_SPI;
@@ -598,7 +622,7 @@ static int mxic_uefc_hc_setup(const struct device *dev)
 	// 	return MXST_ERR_NOT_SUP;
 	// }
 
-	UPDATE_WRITE(HC_CTRL_CH_LUN_PORT_MASK, 0, reg_base + HC_CTRL);
+	UPDATE_WRITE(HC_CTRL_CH_LUN_PORT_MASK, UEFC_CH_LUN_PORT, reg_base + HC_CTRL);
 	UPDATE_WRITE(DEV_CTRL_TYPE_MASK | DEV_CTRL_SCLK_SEL_MASK, dev_ctrl_type | DEV_CTRL_SCLK_SEL_DIV(4), reg_base + DEV_CTRL);
 
 	return 0;
@@ -606,7 +630,9 @@ static int mxic_uefc_hc_setup(const struct device *dev)
 
 static uint32_t mxic_uefc_conf(const struct device *dev)
 {
+	struct mxic_uefc_data *data = SPI_DATA(dev);
 	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
+
 	uint32_t conf =
 			OP_CMD_CNT(1) |
 			OP_CMD_BUSW(0) |
@@ -622,7 +648,7 @@ static uint32_t mxic_uefc_conf(const struct device *dev)
 
 	conf |= OP_DATA_BUSW(0) |
 			OP_DATA_DTR(0) |
-			(OP_DD_RD);
+			(DIR_IN == data->dir ? OP_DD_RD: 0);
 
 	UPDATE_WRITE(DEV_CTRL_DQS_EN, 0, reg_base + DEV_CTRL);
 	UPDATE_WRITE(HC_CTRL_DATA_ORDER, HC_CTRL_DATA_ORDER, reg_base + HC_CTRL);
@@ -655,7 +681,7 @@ static int mxic_uefc_init(const struct device *dev)
 	MXIC_WR32(UEFC_BASE_MAP_ADDR, reg_base + BASE_MAP_ADDR);
 	MXIC_WR32(UEFC_TOP_MAP_ADDR, reg_base + TOP_MAP_ADDR);
 
-	ret =  mxic_uefc_hc_setup(dev);
+	ret =  mxic_uefc_hc_setup(dev, UEFC_CH_LUN_PORT);
 
 	uefc_version = MXIC_RD32(reg_base + HC_VER);
 
@@ -724,7 +750,7 @@ static int mxic_uefc_io_mode_xfer(const struct device *dev, void *tx, void *rx, 
 
 		if (tx) {
 			memcpy(&data, tx + ofs, nbytes);
-			printk("tx data: %08X\r\n", data);
+			// printk("tx data: %08X\r\n", data);
 		}
 
 		ret = mxic_uefc_poll_hc_reg(dev, PRES_STS, PRES_STS_TX_NFULL);
@@ -742,7 +768,7 @@ static int mxic_uefc_io_mode_xfer(const struct device *dev, void *tx, void *rx, 
 		if (rx) {
 			memcpy(rx + ofs, &data, nbytes);
 		}
-		printk("rx data: %08X\r\n", data);
+		// printk("RRRRRRRRRRRRRRRRRRRRRRRRRX data: %08X\r\n", data);
 		ofs += nbytes;
 	}
 
@@ -755,11 +781,11 @@ static void mxic_uefc_cs_start(const struct device *dev)
 	
 	/* Enable IO Mode */
 	MXIC_WR32(TFR_CTRL_IO_START, reg_base + TFR_CTRL);
-	while (TFR_CTRL_IO_START & MXIC_RD32(TFR_CTRL));
+	while (TFR_CTRL_IO_START & MXIC_RD32(reg_base + TFR_CTRL));
 
 	/* Enable host controller, reset counter */
 	MXIC_WR32(TFR_CTRL_HC_ACT, reg_base + TFR_CTRL);
-	while (TFR_CTRL_HC_ACT & MXIC_RD32(TFR_CTRL));
+	while (TFR_CTRL_HC_ACT & MXIC_RD32(reg_base + TFR_CTRL));
 
 	/* Assert CS */
 	MXIC_WR32(TFR_CTRL_DEV_ACT, reg_base + TFR_CTRL);
@@ -791,7 +817,13 @@ static int mxic_uefc_transceive(const struct device *dev,
 {
 	int ret = 0;
 	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
+	struct mxic_uefc_data *data = SPI_DATA(dev);
 
+	if (tx_bufs->count > 1 && rx_bufs == NULL) {
+		data->dir = DIR_OUT;
+	} else {
+		data->dir = DIR_IN;
+	}
 
 	MXIC_WR32(mxic_uefc_conf(dev), reg_base + TFR_MODE);
 
@@ -831,22 +863,11 @@ static int mxic_uefc_transceive(const struct device *dev,
 static int mxic_uefc_release(const struct device *dev,
 			   const struct spi_config *config)
 {
+	mxic_uefc_cs_end(dev);
+
 	return 0;
 }
 
-struct mxic_uefc_data {
-	DEVICE_MMIO_RAM;
-};
-
-struct mxic_uefc_config {
-	DEVICE_MMIO_ROM;
-};
-
-static struct mxic_uefc_data mxic_uefc_data_0;
-
-static struct mxic_uefc_config mxic_uefc_config_0 = {
-	DEVICE_MMIO_ROM_INIT(DT_DRV_INST(0))
-};
 
 /* SPI driver APIs structure */
 static const struct spi_driver_api mxic_uefc_api = {

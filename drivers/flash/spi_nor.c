@@ -1432,11 +1432,13 @@ static int spi_nor_configure(const struct device *dev)
 	const struct spi_nor_config *cfg = dev->config;
 	uint8_t jedec_id[SPI_NOR_MAX_ID_LEN];
 	int rc;
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	/* Validate bus and CS is ready */
 	if (!spi_is_ready_dt(&cfg->spi)) {
 		return -ENODEV;
 	}
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 #if ANY_INST_HAS_RESET_GPIOS
 
@@ -1460,6 +1462,7 @@ static int spi_nor_configure(const struct device *dev)
 	 * Exit DPD and wait until flash is ready.
 	 */
 	acquire_device(dev);
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	rc = exit_dpd(dev);
 	if (rc < 0) {
@@ -1467,12 +1470,15 @@ static int spi_nor_configure(const struct device *dev)
 		release_device(dev);
 		return -ENODEV;
 	}
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	rc = spi_nor_rdsr(dev);
 	if (rc > 0 && (rc & SPI_NOR_WIP_BIT)) {
 		LOG_WRN("Waiting until flash is ready");
 		rc = spi_nor_wait_until_ready(dev, WAIT_READY_REGISTER);
 	}
+		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
 	release_device(dev);
 	if (rc < 0) {
 		LOG_ERR("Failed to wait until flash is ready (%d)", rc);
@@ -1484,6 +1490,8 @@ static int spi_nor_configure(const struct device *dev)
 	 */
 
 	rc = spi_nor_read_jedec_id(dev, jedec_id);
+
+	// udelay ();
 	if (rc != 0) {
 		LOG_ERR("JEDEC ID read failed: %d", rc);
 		return -ENODEV;
@@ -1571,6 +1579,7 @@ static int spi_nor_configure(const struct device *dev)
 static int spi_nor_pm_control(const struct device *dev, enum pm_device_action action)
 {
 	int rc = 0;
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	switch (action) {
 	case PM_DEVICE_ACTION_SUSPEND:
@@ -1585,21 +1594,32 @@ static int spi_nor_pm_control(const struct device *dev, enum pm_device_action ac
 		break;
 	case PM_DEVICE_ACTION_TURN_ON:
 		/* Coming out of power off */
+			printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
 		rc = spi_nor_configure(dev);
+	printf ("***[%s], [%s], [%04d], rc value is %d\r\n", __FILE__, __func__, __LINE__, rc);
+
 		if (rc == 0) {
 			/* Move to DPD, the correct device state
 			 * for PM_DEVICE_STATE_SUSPENDED
 			 */
+	printf ("***[%s], [%s], [%04d], rc value is %d\r\n", __FILE__, __func__, __LINE__, rc);
+
 			acquire_device(dev);
 			rc = enter_dpd(dev);
+	printf ("***[%s], [%s], [%04d], rc value is %d\r\n", __FILE__, __func__, __LINE__, rc);
+
 			release_device(dev);
 		}
+	printf ("***[%s], [%s], [%04d], rc value is %d\r\n", __FILE__, __func__, __LINE__, rc);
+
 		break;
 	case PM_DEVICE_ACTION_TURN_OFF:
 		break;
 	default:
 		rc = -ENOSYS;
 	}
+	printf ("***[%s], [%s], [%04d], rc value is %d\r\n", __FILE__, __func__, __LINE__, rc);
 
 	return rc;
 }

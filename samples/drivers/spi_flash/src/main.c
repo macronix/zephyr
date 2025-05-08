@@ -22,7 +22,7 @@
 	defined(CONFIG_BOARD_NPCX7M6FB_EVB)
 #define SPI_FLASH_TEST_REGION_OFFSET 0x7F000
 #else
-#define SPI_FLASH_TEST_REGION_OFFSET 0xff000
+#define SPI_FLASH_TEST_REGION_OFFSET 0x0FF000
 #endif
 #define SPI_FLASH_SECTOR_SIZE        4096
 
@@ -54,6 +54,7 @@ void single_sector_test(const struct device *flash_dev)
 	const size_t len = sizeof(expected);
 	uint8_t buf[sizeof(expected)];
 	int rc;
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	printf("\nPerform test on single sector");
 	/* Write protection needs to be disabled before each write or
@@ -68,12 +69,18 @@ void single_sector_test(const struct device *flash_dev)
 	 */
 	rc = flash_erase(flash_dev, SPI_FLASH_TEST_REGION_OFFSET,
 			 SPI_FLASH_SECTOR_SIZE);
+			 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
 	if (rc != 0) {
 		printf("Flash erase failed! %d\n", rc);
 	} else {
+			printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
 		/* Check erased pattern */
 		memset(buf, 0, len);
 		rc = flash_read(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, buf, len);
+			printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
 		if (rc != 0) {
 			printf("Flash read failed! %d\n", rc);
 			return;
@@ -243,7 +250,7 @@ int main(void)
 // 	printf("\n%s SPI flash testing\n", flash_dev->name);
 // 	printf("==========================\n");
 
-// 	single_sector_test(flash_dev);
+	single_sector_test(flash_dev);
 // #if defined SPI_FLASH_MULTI_SECTOR_TEST
 // 	multi_sector_test(flash_dev);
 // #endif
