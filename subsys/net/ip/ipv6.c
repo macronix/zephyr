@@ -30,6 +30,7 @@ LOG_MODULE_REGISTER(net_ipv6, CONFIG_NET_IPV6_LOG_LEVEL);
 #include <zephyr/net/net_context.h>
 #include <zephyr/net/net_mgmt.h>
 #include <zephyr/net/virtual.h>
+#include <zephyr/net/ethernet.h>
 #include "net_private.h"
 #include "connection.h"
 #include "icmpv6.h"
@@ -141,6 +142,8 @@ int net_ipv6_finalize(struct net_pkt *pkt, uint8_t next_header_proto)
 	    net_pkt_skip(pkt, net_pkt_ipv6_ext_len(pkt))) {
 		return -ENOBUFS;
 	}
+
+	net_pkt_set_ll_proto_type(pkt, NET_ETH_PTYPE_IPV6);
 
 	if (IS_ENABLED(CONFIG_NET_UDP) &&
 	    next_header_proto == IPPROTO_UDP) {
@@ -581,6 +584,7 @@ enum net_verdict net_ipv6_input(struct net_pkt *pkt, bool is_loopback)
 	if (!net_pkt_filter_ip_recv_ok(pkt)) {
 		/* drop the packet */
 		NET_DBG("DROP: pkt filter");
+		net_stats_update_filter_rx_ipv6_drop(net_pkt_iface(pkt));
 		return NET_DROP;
 	}
 
@@ -759,6 +763,14 @@ enum net_verdict net_ipv6_input(struct net_pkt *pkt, bool is_loopback)
 
 	net_pkt_set_ipv6_ext_len(pkt, ext_len);
 
+	ip.ipv6 = hdr;
+
+	if (IS_ENABLED(CONFIG_NET_SOCKETS_INET_RAW)) {
+		if (net_conn_raw_ip_input(pkt, &ip, current_hdr) == NET_DROP) {
+			goto drop;
+		}
+	}
+
 	switch (current_hdr) {
 	case IPPROTO_ICMPV6:
 		verdict = net_icmpv6_input(pkt, hdr);
@@ -812,8 +824,6 @@ enum net_verdict net_ipv6_input(struct net_pkt *pkt, bool is_loopback)
 		NET_DBG("%s verdict %s", "ICMPv6", net_verdict2str(verdict));
 		return verdict;
 	}
-
-	ip.ipv6 = hdr;
 
 	verdict = net_conn_input(pkt, &ip, current_hdr, &proto_hdr);
 
@@ -903,7 +913,12 @@ static int gen_stable_iid(uint8_t if_index,
 	}
 
 	mbedtls_md_init(&ctx);
-	mbedtls_md_setup(&ctx, md_info, true);
+	ret = mbedtls_md_setup(&ctx, md_info, true);
+	if (ret != 0) {
+		NET_DBG("Cannot %s hmac (%d)", "setup", ret);
+		goto err;
+	}
+
 	ret = mbedtls_md_hmac_starts(&ctx, secret_key, sizeof(secret_key));
 	if (ret != 0) {
 		NET_DBG("Cannot %s hmac (%d)", "start", ret);
@@ -962,8 +977,10 @@ int net_ipv6_addr_generate_iid(struct net_if *iface,
 		if (prefix == NULL) {
 			UNALIGNED_PUT(htonl(0xfe800000), &tmp_prefix.s6_addr32[0]);
 		} else {
-			UNALIGNED_PUT(prefix->s6_addr32[0], &tmp_prefix.s6_addr32[0]);
-			UNALIGNED_PUT(prefix->s6_addr32[1], &tmp_prefix.s6_addr32[1]);
+			UNALIGNED_PUT(UNALIGNED_GET(&prefix->s6_addr32[0]),
+				      &tmp_prefix.s6_addr32[0]);
+			UNALIGNED_PUT(UNALIGNED_GET(&prefix->s6_addr32[1]),
+				      &tmp_prefix.s6_addr32[1]);
 		}
 
 		ret = gen_stable_iid(if_index, &tmp_prefix, network_id, network_id_len,
@@ -978,8 +995,8 @@ int net_ipv6_addr_generate_iid(struct net_if *iface,
 		UNALIGNED_PUT(htonl(0xfe800000), &tmp_addr.s6_addr32[0]);
 		UNALIGNED_PUT(0, &tmp_addr.s6_addr32[1]);
 	} else {
-		UNALIGNED_PUT(prefix->s6_addr32[0], &tmp_addr.s6_addr32[0]);
-		UNALIGNED_PUT(prefix->s6_addr32[1], &tmp_addr.s6_addr32[1]);
+		UNALIGNED_PUT(UNALIGNED_GET(&prefix->s6_addr32[0]), &tmp_addr.s6_addr32[0]);
+		UNALIGNED_PUT(UNALIGNED_GET(&prefix->s6_addr32[1]), &tmp_addr.s6_addr32[1]);
 	}
 
 	if (IS_ENABLED(CONFIG_NET_IPV6_IID_EUI_64)) {

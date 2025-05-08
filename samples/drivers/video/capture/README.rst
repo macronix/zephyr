@@ -19,12 +19,15 @@ Supported camera modules on some i.MX RT boards can be found below.
 - `Camera iMXRT`_
 
 - :zephyr:board:`mimxrt1064_evk`
-- `MT9M114 camera module`_
+  with a `MT9M114 camera module`_
 
 - :zephyr:board:`mimxrt1170_evk`
-- `OV5640 camera module`_
+  with an `OV5640 camera module`_
 
-Also :ref:`arduino_nicla_vision_board` can be used in this sample as capture device, in that case
+- :zephyr:board:`frdm_mcxn947`
+  with any ``arducam,dvp-20pin-connector`` camera module such as :ref:`dvp_20pin_ov7670`.
+
+Also :zephyr:board:`arduino_nicla_vision` can be used in this sample as capture device, in that case
 The user can transfer the captured frames through on board USB.
 
 Wiring
@@ -38,7 +41,7 @@ On :zephyr:board:`mimxrt1170_evk`, the OV5640 camera module should be plugged in
 J2 camera connector. A USB cable should be connected from a host to the micro
 USB debug connector (J11) in order to get console output via the daplink interface.
 
-For :ref:`arduino_nicla_vision_board` there is no extra wiring required.
+For :zephyr:board:`arduino_nicla_vision` there is no extra wiring required.
 
 Building and Running
 ********************
@@ -61,11 +64,22 @@ For :zephyr:board:`mimxrt1170_evk`, build this sample application with the follo
    :goals: build
    :compact:
 
-For :ref:`arduino_nicla_vision_board`, build this sample application with the following commands:
+For :zephyr:board:`arduino_nicla_vision`, build this sample application with the following
+commands:
 
 .. zephyr-app-commands::
    :zephyr-app: samples/drivers/video/capture
    :board: arduino_nicla_vision/stm32h747xx/m7
+   :goals: build
+   :compact:
+
+For :zephyr:board:`frdm_mcxn947`, build this sample application with the following commands,
+using the :ref:`dvp_20pin_ov7670` and :ref:`lcd_par_s035` connected to the board:
+
+.. zephyr-app-commands::
+   :zephyr-app: samples/drivers/video/capture
+   :board: frdm_mcxn947/mcxn947/cpu0
+   :shield: dvp_20pin_ov7670,lcd_par_s035_8080
    :goals: build
    :compact:
 

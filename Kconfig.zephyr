@@ -215,12 +215,6 @@ config LINKER_SORT_BY_ALIGNMENT
 	  in decreasing size of symbols. This helps to minimize
 	  padding between symbols.
 
-config SRAM_VECTOR_TABLE
-	bool "Place the vector table in SRAM instead of flash"
-	help
-	  The option specifies that the vector table should be placed at the
-	  start of SRAM instead of the start of flash.
-
 config HAS_SRAM_OFFSET
 	bool
 	help
@@ -621,6 +615,13 @@ config MISRA_SANE
 	  standard for safety reasons.  Specifically variable length
 	  arrays are not permitted (and gcc will enforce this).
 
+config TOOLCHAIN_SUPPORTS_VLA_IN_STATEMENTS
+	bool
+	default y
+	help
+	  Hidden symbol to state if the toolchain can handle vla in
+	  statements.
+
 endmenu
 
 choice
@@ -709,14 +710,33 @@ config CLEANUP_INTERMEDIATE_FILES
 	  from the build process. Note this breaks incremental builds, west spdx
 	  (Software Bill of Material generation), and maybe others.
 
+config BUILD_GAP_FILL_PATTERN
+	hex "Gap fill pattern"
+	default 0xFF
+	help
+	  Pattern used for gap filling of output files.
+	  This value should be set to the value of a clean flash as this can
+	  significantly reduce flash write times.
+	  This setting only defines the gap fill pattern and doesn't enable gap
+	  filling.
+	  Note: binary files are always gap filled as they contain no address
+	  information.
+
 config BUILD_NO_GAP_FILL
-	bool "Don't fill gaps in generated hex/bin/s19 files."
+	bool "Don't fill gaps in generated hex/s19 files [DEPRECATED]."
+	select DEPRECATED
 
 config BUILD_OUTPUT_HEX
 	bool "Build a binary in HEX format"
 	help
 	  Build an Intel HEX binary zephyr/zephyr.hex in the build directory.
 	  The name of this file can be customized with CONFIG_KERNEL_BIN_NAME.
+
+config BUILD_OUTPUT_HEX_GAP_FILL
+	bool "Fill gaps in hex files"
+	depends on !BUILD_NO_GAP_FILL
+	help
+	  Fill gaps in hex based files.
 
 config BUILD_OUTPUT_BIN
 	bool "Build a binary in BIN format"
@@ -752,11 +772,23 @@ config BUILD_OUTPUT_S19
 	  Build an S19 binary zephyr/zephyr.s19 in the build directory.
 	  The name of this file can be customized with CONFIG_KERNEL_BIN_NAME.
 
+config BUILD_OUTPUT_S19_GAP_FILL
+	bool "Fill gaps in s19 files"
+	depends on !BUILD_NO_GAP_FILL
+	help
+	  Fill gaps in s19 based files.
+
 config BUILD_OUTPUT_UF2
 	bool "Build a binary in UF2 format"
 	depends on BUILD_OUTPUT_BIN
 	help
 	  Build a UF2 binary zephyr/zephyr.uf2 in the build directory.
+	  The name of this file can be customized with CONFIG_KERNEL_BIN_NAME.
+
+config BUILD_OUTPUT_MOT
+	bool "Build a binary in MOT format"
+	help
+	  Build a MOT binary zephyr/zephyr.mot in the build directory.
 	  The name of this file can be customized with CONFIG_KERNEL_BIN_NAME.
 
 if BUILD_OUTPUT_UF2
@@ -768,7 +800,8 @@ config BUILD_OUTPUT_UF2_FAMILY_ID
 	default "0xada52840" if SOC_NRF52840_QIAA
 	default "0x4fb2d5bd" if SOC_SERIES_IMXRT10XX || SOC_SERIES_IMXRT11XX
 	default "0x2abc77ec" if SOC_SERIES_LPC55XXX
-	default "0xe48bff56" if SOC_SERIES_RP2XXX
+	default "0xe48bff56" if SOC_SERIES_RP2040
+	default "0xe48bff57" if SOC_SERIES_RP2350
 	default "0x68ed2b88" if SOC_SERIES_SAMD21
 	default "0x55114460" if SOC_SERIES_SAMD51
 	default "0x647824b6" if SOC_SERIES_STM32F0X

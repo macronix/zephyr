@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Nordic Semiconductor ASA
+ * Copyright (c) 2021-2025 Nordic Semiconductor ASA
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -9,9 +9,11 @@
 #include <stdint.h>
 
 #include <zephyr/bluetooth/gap.h>
+#include <zephyr/bluetooth/hci_types.h>
 #include <zephyr/console/console.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/iso.h>
+#include <zephyr/kernel.h>
 #include <zephyr/sys/byteorder.h>
 
 #include <zephyr/logging/log.h>
@@ -71,7 +73,18 @@ static const struct bt_data ad[] = {
 
 static void iso_connected(struct bt_iso_chan *chan)
 {
+	const struct bt_iso_chan_path hci_path = {
+		.pid = BT_ISO_DATA_PATH_HCI,
+		.format = BT_HCI_CODING_FORMAT_TRANSPARENT,
+	};
+	int err;
+
 	LOG_INF("ISO Channel %p connected", chan);
+
+	err = bt_iso_setup_data_path(chan, BT_HCI_DATAPATH_DIR_HOST_TO_CTLR, &hci_path);
+	if (err != 0) {
+		printk("Failed to setup ISO TX data path: %d\n", err);
+	}
 
 	connected_bis++;
 	if (connected_bis == big_create_param.num_bis) {
@@ -86,7 +99,7 @@ static void iso_disconnected(struct bt_iso_chan *chan, uint8_t reason)
 	       chan, reason);
 
 	connected_bis--;
-	if (connected_bis == big_create_param.num_bis) {
+	if (connected_bis == 0) {
 		k_sem_give(&sem_big_term);
 	}
 }
@@ -681,7 +694,7 @@ static int create_big(struct bt_le_ext_adv **adv, struct bt_iso_big **big)
 	err = bt_le_ext_adv_set_data(*adv, ad, ARRAY_SIZE(ad), NULL, 0);
 	if (err) {
 		LOG_ERR("Failed to set advertising data (err %d)", err);
-		return 0;
+		return err;
 	}
 
 	LOG_INF("Setting Periodic Advertising parameters");
@@ -739,32 +752,41 @@ static int delete_big(struct bt_le_ext_adv **adv, struct bt_iso_big **big)
 {
 	int err;
 
-	err = bt_iso_big_terminate(*big);
-	if (err != 0) {
-		LOG_ERR("Failed to terminate BIG (err %d)", err);
-		return err;
-	}
-	*big = NULL;
-
-	err = bt_le_per_adv_stop(*adv);
-	if (err != 0) {
-		LOG_ERR("Failed to stop periodic advertising (err %d)", err);
-		return err;
-	}
-
-	err = bt_le_ext_adv_stop(*adv);
-	if (err != 0) {
-		LOG_ERR("Failed to stop advertising (err %d)", err);
-		return err;
+	if (*big != NULL) {
+		err = bt_iso_big_terminate(*big);
+		if (err != 0) {
+			LOG_ERR("Failed to terminate BIG (err %d)", err);
+			return err;
+		}
+		err = k_sem_take(&sem_big_term, K_FOREVER);
+		if (err != 0) {
+			LOG_ERR("failed to take sem_big_term (err %d)", err);
+			return err;
+		}
+		*big = NULL;
 	}
 
-	err = bt_le_ext_adv_delete(*adv);
-	if (err != 0) {
-		LOG_ERR("Failed to delete advertiser (err %d)", err);
-		return err;
-	}
+	if (*adv != NULL) {
+		err = bt_le_per_adv_stop(*adv);
+		if (err != 0) {
+			LOG_ERR("Failed to stop periodic advertising (err %d)", err);
+			return err;
+		}
 
-	*adv = NULL;
+		err = bt_le_ext_adv_stop(*adv);
+		if (err != 0) {
+			LOG_ERR("Failed to stop advertising (err %d)", err);
+			return err;
+		}
+
+		err = bt_le_ext_adv_delete(*adv);
+		if (err != 0) {
+			LOG_ERR("Failed to delete advertiser (err %d)", err);
+			return err;
+		}
+
+		*adv = NULL;
+	}
 
 	return 0;
 }
@@ -810,7 +832,15 @@ int test_run_broadcaster(void)
 
 	err = create_big(&adv, &big);
 	if (err) {
+		int del_err;
+
 		LOG_ERR("Could not create BIG: %d", err);
+
+		del_err = delete_big(&adv, &big);
+		if (del_err) {
+			LOG_ERR("Could not delete BIG: %d", del_err);
+		}
+
 		return err;
 	}
 

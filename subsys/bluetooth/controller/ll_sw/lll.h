@@ -32,10 +32,6 @@
 /* Intervals after which connection or sync establishment is considered lost */
 #define CONN_ESTAB_COUNTDOWN 6U
 
-#if defined(CONFIG_BT_CTLR_XTAL_ADVANCED)
-#define XON_BITMASK BIT(31) /* XTAL has been retained from previous prepare */
-#endif /* CONFIG_BT_CTLR_XTAL_ADVANCED */
-
 #if defined(CONFIG_BT_BROADCASTER)
 #if defined(CONFIG_BT_CTLR_ADV_SET)
 #define BT_CTLR_ADV_SET CONFIG_BT_CTLR_ADV_SET
@@ -213,19 +209,7 @@ struct ull_hdr {
 				*/
 
 	/* Event parameters */
-	/* TODO: The intention is to use the greater of the
-	 *       ticks_prepare_to_start or ticks_active_to_start as the prepare
-	 *       offset. At the prepare tick generate a software interrupt
-	 *       serviceable by application as the per role configurable advance
-	 *       radio event notification, usable for data acquisitions.
-	 *       ticks_preempt_to_start is the per role dynamic preempt offset,
-	 *       which shall be based on role's preparation CPU usage
-	 *       requirements.
-	 */
 	struct {
-		uint32_t ticks_active_to_start;
-		uint32_t ticks_prepare_to_start;
-		uint32_t ticks_preempt_to_start;
 		uint32_t ticks_slot;
 	};
 
@@ -351,8 +335,18 @@ struct node_rx_ftr {
 				* chaining, to reserve node_rx for CSA#2 event
 				* generation etc.
 				*/
-		void *aux_ptr;
-		uint8_t aux_phy;
+		void *lll_aux; /* LLL scheduled auxiliary context associated to
+				* the scan context when enqueuing the node rx.
+				* This does not overlap the below aux_ptr or
+				* aux_phy which are used before enqueue when
+				* setting up LLL scheduling.
+				*/
+		void *aux_ptr; /* aux pointer stored when LLL scheduling the
+				* auxiliary PDU reception by scan context.
+				*/
+		uint8_t aux_phy; /* aux phy stored when LLL scheduling the
+				  * auxiliary PDU reception by scan context.
+				  */
 		struct cte_conn_iq_report *iq_report;
 	};
 	uint32_t ticks_anchor;
@@ -531,9 +525,9 @@ struct event_done_extra {
 	*/
 				};
 
-#if defined(CONFIG_BT_CTLR_ADV_EXT)
+#if defined(CONFIG_BT_CTLR_SCAN_AUX_USE_CHAINS)
 				void *lll;
-#endif /* CONFIG_BT_CTLR_ADV_EXT */
+#endif /* CONFIG_BT_CTLR_SCAN_AUX_USE_CHAINS */
 			};
 
 #if defined(CONFIG_BT_CTLR_LE_ENC)

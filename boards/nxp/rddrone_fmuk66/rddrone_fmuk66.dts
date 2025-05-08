@@ -25,6 +25,7 @@
 		red-pwm-led = &red_pwm_led;
 		green-pwm-led = &green_pwm_led;
 		blue-pwm-led = &blue_pwm_led;
+		accel0 = &fxos8700;
 	};
 
 	chosen {
@@ -142,7 +143,7 @@
 /* PWM header is powered by FlexTimer 0 for channels 1 to 4 */
 &ftm0 {
 	status = "okay";
-	compatible = "nxp,kinetis-ftm-pwm";
+	compatible = "nxp,ftm-pwm";
 	#pwm-cells = <3>;
 	pinctrl-0 = <&ftm0_default>;
 	pinctrl-names = "default";
@@ -153,7 +154,7 @@
 /* RGB LED powered by FlexTimer 3, and PWM headers for channel 5 and 6 */
 &ftm3 {
 	status = "okay";
-	compatible = "nxp,kinetis-ftm-pwm";
+	compatible = "nxp,ftm-pwm";
 	#pwm-cells = <3>;
 	pinctrl-0 = <&ftm3_default>;
 	pinctrl-names = "default";
@@ -347,7 +348,7 @@ zephyr_udc0: &usbotg {
 	clock-frequency = <DT_FREQ_M(1)>;
 
 
-	fxos8700@0 {
+	fxos8700: fxos8700@0 {
 		compatible = "nxp,fxos8700";
 		reg = <0>;
 		spi-max-frequency = <DT_FREQ_M(1)>;
@@ -357,7 +358,7 @@ zephyr_udc0: &usbotg {
 		status = "okay";
 	};
 
-	fxas21002@1 {
+	fxas21002: fxas21002@1 {
 		compatible = "nxp,fxas21002";
 		reg = <1>;
 		spi-max-frequency = <DT_FREQ_M(1)>;

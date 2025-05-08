@@ -5,24 +5,33 @@
 
 /*
  * Copyright (c) 2020 Intel Corporation
- * Copyright (c) 2021 Nordic Semiconductor ASA
+ * Copyright (c) 2021-2025 Nordic Semiconductor ASA
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-
+#include <errno.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
-#include <ctype.h>
-#include <zephyr/kernel.h>
-#include <zephyr/shell/shell.h>
-#include <zephyr/sys/byteorder.h>
-#include <zephyr/sys/util.h>
+#include <string.h>
 
+#include <zephyr/bluetooth/gap.h>
 #include <zephyr/bluetooth/hci.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
+#include <zephyr/bluetooth/hci_types.h>
 #include <zephyr/bluetooth/iso.h>
+#include <zephyr/kernel.h>
+#include <zephyr/net_buf.h>
+#include <zephyr/shell/shell.h>
+#include <zephyr/shell/shell_string_conv.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/sys/time_units.h>
+#include <zephyr/sys/util.h>
+#include <zephyr/sys/util_macro.h>
 
 #include "host/shell/bt.h"
+#include "common/bt_shell_private.h"
 
 #if defined(CONFIG_BT_ISO_TX)
 #define DEFAULT_IO_QOS                                                                             \
@@ -72,31 +81,35 @@ static uint32_t get_next_sn(uint32_t last_sn, int64_t *last_ticks,
 
 #if defined(CONFIG_BT_ISO_RX)
 static void iso_recv(struct bt_iso_chan *chan, const struct bt_iso_recv_info *info,
-		struct net_buf *buf)
+		     struct net_buf *buf)
 {
 	if (info->flags & BT_ISO_FLAGS_VALID) {
-		shell_print(ctx_shell, "Incoming data channel %p len %u, seq: %d, ts: %d",
-			    chan, buf->len, info->seq_num, info->ts);
+		bt_shell_print("Incoming data channel %p len %u, seq: %d, ts: %d",
+			       chan, buf->len, info->seq_num, info->ts);
 	}
 }
 #endif /* CONFIG_BT_ISO_RX */
 
 static void iso_connected(struct bt_iso_chan *chan)
 {
+	const struct bt_iso_chan_path hci_path = {
+		.pid = BT_ISO_DATA_PATH_HCI,
+		.format = BT_HCI_CODING_FORMAT_TRANSPARENT,
+	};
 	struct bt_iso_info iso_info;
 	int err;
 
-	shell_print(ctx_shell, "ISO Channel %p connected", chan);
-
+	bt_shell_print("ISO Channel %p connected", chan);
 
 	err = bt_iso_chan_get_info(chan, &iso_info);
 	if (err != 0) {
-		printk("Failed to get ISO info: %d", err);
+		bt_shell_error("Failed to get ISO info: %d", err);
 		return;
 	}
 
 #if defined(CONFIG_BT_ISO_TX)
-	if (iso_info.type == BT_ISO_CHAN_TYPE_CONNECTED) {
+	if (iso_info.type == BT_ISO_CHAN_TYPE_CENTRAL ||
+	    iso_info.type == BT_ISO_CHAN_TYPE_PERIPHERAL) {
 		cis_sn_last = 0U;
 		cis_sn_last_updated_ticks = k_uptime_ticks();
 	} else {
@@ -104,12 +117,47 @@ static void iso_connected(struct bt_iso_chan *chan)
 		bis_sn_last_updated_ticks = k_uptime_ticks();
 	}
 #endif /* CONFIG_BT_ISO_TX */
+
+	if (iso_info.can_recv) {
+		err = bt_iso_setup_data_path(chan, BT_HCI_DATAPATH_DIR_CTLR_TO_HOST, &hci_path);
+		if (err != 0) {
+			bt_shell_error("Failed to setup ISO RX data path: %d", err);
+		}
+	}
+
+	if (iso_info.can_send) {
+		err = bt_iso_setup_data_path(chan, BT_HCI_DATAPATH_DIR_HOST_TO_CTLR, &hci_path);
+		if (err != 0) {
+			bt_shell_error("Failed to setup ISO TX data path: %d", err);
+		}
+	}
 }
 
 static void iso_disconnected(struct bt_iso_chan *chan, uint8_t reason)
 {
-	shell_print(ctx_shell, "ISO Channel %p disconnected with reason 0x%02x",
-		    chan, reason);
+	struct bt_iso_info iso_info;
+	int err;
+
+	bt_shell_print("ISO Channel %p disconnected with reason 0x%02x", chan, reason);
+
+	err = bt_iso_chan_get_info(chan, &iso_info);
+	if (err != 0) {
+		bt_shell_error("Failed to get ISO info: %d", err);
+	} else if (iso_info.type == BT_ISO_CHAN_TYPE_CENTRAL) {
+		if (iso_info.can_recv) {
+			err = bt_iso_remove_data_path(chan, BT_HCI_DATAPATH_DIR_CTLR_TO_HOST);
+			if (err != 0) {
+				bt_shell_error("Failed to remove ISO RX data path: %d", err);
+			}
+		}
+
+		if (iso_info.can_send) {
+			err = bt_iso_remove_data_path(chan, BT_HCI_DATAPATH_DIR_HOST_TO_CTLR);
+			if (err != 0) {
+				bt_shell_error("Failed to remove ISO TX data path: %d", err);
+			}
+		}
+	}
 }
 
 static struct bt_iso_chan_ops iso_ops = {
@@ -190,8 +238,6 @@ static long parse_latency(const struct shell *sh, const char *latency_str)
 
 	return latency;
 }
-
-
 
 static int cmd_cig_create(const struct shell *sh, size_t argc, char *argv[])
 {
@@ -474,11 +520,11 @@ static int cmd_connect(const struct shell *sh, size_t argc, char *argv[])
 static int iso_accept(const struct bt_iso_accept_info *info,
 		      struct bt_iso_chan **chan)
 {
-	shell_print(ctx_shell, "Incoming request from %p with CIG ID 0x%02X and CIS ID 0x%02X",
-		    info->acl, info->cig_id, info->cis_id);
+	bt_shell_print("Incoming request from %p with CIG ID 0x%02X and CIS ID 0x%02X",
+		       info->acl, info->cig_id, info->cis_id);
 
 	if (iso_chan.iso) {
-		shell_print(ctx_shell, "No channels available");
+		bt_shell_print("No channels available");
 		return -ENOMEM;
 	}
 
@@ -531,8 +577,7 @@ static int cmd_listen(const struct shell *sh, size_t argc, char *argv[])
 
 	err = bt_iso_server_register(&iso_server);
 	if (err) {
-		shell_error(sh, "Unable to register ISO cap (err %d)",
-			    err);
+		shell_error(sh, "Unable to register ISO cap (err %d)", err);
 		return err;
 	}
 
@@ -557,6 +602,12 @@ static int cmd_send(const struct shell *sh, size_t argc, char *argv[])
 		count = shell_strtoul(argv[1], 0, &ret);
 		if (ret != 0) {
 			shell_error(sh, "Could not parse count: %d", ret);
+
+			return -ENOEXEC;
+		}
+
+		if (count < 1) {
+			shell_error(sh, "Cannot send 0 times");
 
 			return -ENOEXEC;
 		}
@@ -601,7 +652,7 @@ static int cmd_send(const struct shell *sh, size_t argc, char *argv[])
 }
 
 static int cmd_disconnect(const struct shell *sh, size_t argc,
-			      char *argv[])
+			  char *argv[])
 {
 	int err;
 
@@ -633,7 +684,7 @@ static int cmd_tx_sync_read_cis(const struct shell *sh, size_t argc, char *argv[
 	}
 
 	shell_print(sh, "TX sync info:\n\tTimestamp=%u\n\tOffset=%u\n\tSequence number=%u",
-		tx_info.ts, tx_info.offset, tx_info.seq_num);
+		    tx_info.ts, tx_info.offset, tx_info.seq_num);
 
 	return 0;
 }
@@ -673,6 +724,12 @@ static int cmd_broadcast(const struct shell *sh, size_t argc, char *argv[])
 		count = shell_strtoul(argv[1], 0, &ret);
 		if (ret != 0) {
 			shell_error(sh, "Could not parse count: %d", ret);
+
+			return -ENOEXEC;
+		}
+
+		if (count < 1) {
+			shell_error(sh, "Cannot send 0 times");
 
 			return -ENOEXEC;
 		}
@@ -786,7 +843,7 @@ static int cmd_tx_sync_read_bis(const struct shell *sh, size_t argc, char *argv[
 	}
 
 	shell_print(sh, "TX sync info:\n\tTimestamp=%u\n\tOffset=%u\n\tSequence number=%u",
-		tx_info.ts, tx_info.offset, tx_info.seq_num);
+		    tx_info.ts, tx_info.offset, tx_info.seq_num);
 
 	return 0;
 }
@@ -866,9 +923,7 @@ static int cmd_big_sync(const struct shell *sh, size_t argc, char *argv[])
 
 			sync_timeout = shell_strtoul(argv[i], 0, &err);
 			if (err != 0) {
-				shell_error(sh,
-					    "Could not parse sync_timeout: %d",
-					    err);
+				shell_error(sh, "Could not parse sync_timeout: %d", err);
 
 				return -ENOEXEC;
 			}
@@ -876,8 +931,7 @@ static int cmd_big_sync(const struct shell *sh, size_t argc, char *argv[])
 			if (!IN_RANGE(sync_timeout,
 				      BT_ISO_SYNC_TIMEOUT_MIN,
 				      BT_ISO_SYNC_TIMEOUT_MAX)) {
-				shell_error(sh, "Invalid sync_timeout %lu",
-					    sync_timeout);
+				shell_error(sh, "Invalid sync_timeout %lu", sync_timeout);
 
 				return -ENOEXEC;
 			}

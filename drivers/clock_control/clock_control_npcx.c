@@ -11,7 +11,13 @@
 #include <zephyr/dt-bindings/clock/npcx_clock.h>
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(clock_control_npcx, LOG_LEVEL_ERR);
+LOG_MODULE_REGISTER(clock_control_npcx, CONFIG_CLOCK_CONTROL_LOG_LEVEL);
+
+#if defined(CONFIG_NPCX_SOC_VARIANT_NPCXN)
+#define NPCX_PWDWN_CTL_START_OFFSET NPCX_PWDWN_CTL1
+#elif defined(CONFIG_NPCX_SOC_VARIANT_NPCKN)
+#define NPCX_PWDWN_CTL_START_OFFSET NPCX_PWDWN_CTL0
+#endif
 
 /* Driver config */
 struct npcx_pcc_config {
@@ -148,7 +154,7 @@ void npcx_clock_control_turn_off_system_sleep(void)
 #endif /* CONFIG_PM */
 
 /* Clock controller driver registration */
-static const struct clock_control_driver_api npcx_clock_control_api = {
+static DEVICE_API(clock_control, npcx_clock_control_api) = {
 	.on = npcx_clock_control_on,
 	.off = npcx_clock_control_off,
 	.get_rate = npcx_clock_control_get_subsys_rate,
@@ -243,7 +249,7 @@ static int npcx_clock_control_init(const struct device *dev)
 	 * power consumption.
 	 */
 	for (int i = 0; i < ARRAY_SIZE(pddwn_ctl_val); i++) {
-		NPCX_PWDWN_CTL(pmc_base, i) = pddwn_ctl_val[i];
+		NPCX_PWDWN_CTL(pmc_base, i + NPCX_PWDWN_CTL_START_OFFSET) = pddwn_ctl_val[i];
 	}
 
 	/* Turn off the clock of the eSPI module only if eSPI isn't required */

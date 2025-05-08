@@ -849,7 +849,7 @@ BDMA_STM32_EXPORT_API int bdma_stm32_get_status(const struct device *dev,
 	return 0;
 }
 
-static const struct dma_driver_api dma_funcs = {
+static DEVICE_API(dma, dma_funcs) = {
 	.reload		 = bdma_stm32_reload,
 	.config		 = bdma_stm32_configure,
 	.start		 = bdma_stm32_start,
@@ -883,7 +883,7 @@ static struct bdma_stm32_data bdma_stm32_data_##index = {		\
 };									\
 									\
 DEVICE_DT_INST_DEFINE(index,							\
-		    &bdma_stm32_init,						\
+		    bdma_stm32_init,						\
 		    NULL,							\
 		    &bdma_stm32_data_##index, &bdma_stm32_config_##index,	\
 		    PRE_KERNEL_1, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT,		\

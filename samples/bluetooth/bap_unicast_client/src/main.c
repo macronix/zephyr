@@ -162,8 +162,7 @@ static bool check_audio_support_and_connect(struct bt_data *data,
 	printk("Audio server found with type %u, contexts 0x%08x and meta_len %u; connecting\n",
 	       announcement_type, audio_contexts, meta_len);
 
-	err = bt_conn_le_create(addr, BT_CONN_LE_CREATE_CONN,
-				BT_LE_CONN_PARAM_DEFAULT,
+	err = bt_conn_le_create(addr, BT_CONN_LE_CREATE_CONN, BT_BAP_CONN_PARAM_RELAXED,
 				&default_conn);
 	if (err != 0) {
 		printk("Create conn to failed (%u)\n", err);
@@ -236,7 +235,7 @@ static void stream_enabled(struct bt_bap_stream *stream)
 	k_sem_give(&sem_stream_enabled);
 }
 
-static bool stream_is_tx(const struct bt_bap_stream *stream)
+static bool stream_tx_can_send(const struct bt_bap_stream *stream)
 {
 	struct bt_bap_ep_info info;
 	int err;
@@ -272,7 +271,7 @@ static void stream_started(struct bt_bap_stream *stream)
 {
 	printk("Audio Stream %p started\n", stream);
 	/* Register the stream for TX if it can send */
-	if (IS_ENABLED(CONFIG_BT_AUDIO_TX) && stream_is_tx(stream)) {
+	if (IS_ENABLED(CONFIG_BT_AUDIO_TX) && stream_tx_can_send(stream)) {
 		const int err = stream_tx_register(stream);
 
 		if (err != 0) {
@@ -298,7 +297,7 @@ static void stream_stopped(struct bt_bap_stream *stream, uint8_t reason)
 	printk("Audio Stream %p stopped with reason 0x%02X\n", stream, reason);
 
 	/* Unregister the stream for TX if it can send */
-	if (IS_ENABLED(CONFIG_BT_AUDIO_TX) && stream_is_tx(stream)) {
+	if (IS_ENABLED(CONFIG_BT_AUDIO_TX) && stream_tx_can_send(stream)) {
 		const int err = stream_tx_unregister(stream);
 
 		if (err != 0) {

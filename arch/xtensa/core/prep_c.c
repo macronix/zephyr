@@ -13,6 +13,13 @@ extern FUNC_NORETURN void z_cstart(void);
 /* defined by the SoC in case of CONFIG_SOC_HAS_RUNTIME_NUM_CPUS=y */
 extern void soc_num_cpus_init(void);
 
+/* Make sure the platform configuration matches what the toolchain
+ * thinks the hardware is doing.
+ */
+#ifdef CONFIG_DCACHE_LINE_SIZE
+BUILD_ASSERT(CONFIG_DCACHE_LINE_SIZE == XCHAL_DCACHE_LINESIZE);
+#endif
+
 /**
  *
  * @brief Prepare to and run C code
@@ -37,10 +44,12 @@ void z_prep_c(void)
 	 */
 	sys_cache_data_flush_and_invd_all();
 
+#if !defined(CONFIG_SCHED_CPU_MASK_PIN_ONLY)
 	/* Our cache top stash location might have junk in it from a
 	 * pre-boot environment.  Must be zero or valid!
 	 */
 	XTENSA_WSR(ZSR_FLUSH_STR, 0);
+#endif
 #endif
 
 	cpu0->nested = 0;

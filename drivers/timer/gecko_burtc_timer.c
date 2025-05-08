@@ -20,7 +20,6 @@
 #include <soc.h>
 #include <zephyr/drivers/clock_control.h>
 #include <zephyr/drivers/timer/system_timer.h>
-#include <zephyr/drivers/pinctrl.h>
 #include <zephyr/sys_clock.h>
 #include <zephyr/irq.h>
 #include <zephyr/spinlock.h>
@@ -55,7 +54,7 @@ const int32_t z_sys_timer_irq_for_test = TIMER_IRQ;
 /* With CONFIG_TIMER_READS_ITS_FREQUENCY_AT_RUNTIME, that's where we
  * should write hw_cycles timer clock frequency upon init
  */
-extern int z_clock_hw_cycles_per_sec;
+extern unsigned int z_clock_hw_cycles_per_sec;
 
 /* Number of hw_cycles clocks per 1 kernel tick */
 static uint32_t g_cyc_per_tick;

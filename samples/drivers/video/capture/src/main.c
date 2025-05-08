@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2019 Linaro Limited
+ * Copyright 2025 NXP
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -9,13 +10,12 @@
 
 #include <zephyr/drivers/display.h>
 #include <zephyr/drivers/video.h>
+#include <zephyr/drivers/video-controls.h>
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(main);
 
 #ifdef CONFIG_TEST
-#include <zephyr/drivers/video-controls.h>
-
 #include "check_test_pattern.h"
 
 #define LOG_LEVEL LOG_LEVEL_DBG
@@ -63,7 +63,14 @@ static inline int display_setup(const struct device *const display_dev, const ui
 		return ret;
 	}
 
-	return display_blanking_off(display_dev);
+	/* Turn off blanking if driver supports it */
+	ret = display_blanking_off(display_dev);
+	if (ret == -ENOSYS) {
+		LOG_DBG("Display blanking off not available");
+		ret = 0;
+	}
+
+	return ret;
 }
 
 static inline void video_display_frame(const struct device *const display_dev,
@@ -121,11 +128,10 @@ int main(void)
 	while (caps.format_caps[i].pixelformat) {
 		const struct video_format_cap *fcap = &caps.format_caps[i];
 		/* fourcc to string */
-		LOG_INF("  %c%c%c%c width [%u; %u; %u] height [%u; %u; %u]",
-		       (char)fcap->pixelformat, (char)(fcap->pixelformat >> 8),
-		       (char)(fcap->pixelformat >> 16), (char)(fcap->pixelformat >> 24),
-		       fcap->width_min, fcap->width_max, fcap->width_step, fcap->height_min,
-		       fcap->height_max, fcap->height_step);
+		LOG_INF("  %s width [%u; %u; %u] height [%u; %u; %u]",
+		       VIDEO_FOURCC_TO_STR(fcap->pixelformat),
+		       fcap->width_min, fcap->width_max, fcap->width_step,
+		       fcap->height_min, fcap->height_max, fcap->height_step);
 		i++;
 	}
 
@@ -145,14 +151,11 @@ int main(void)
 #endif
 
 	if (strcmp(CONFIG_VIDEO_PIXEL_FORMAT, "")) {
-		fmt.pixelformat =
-			video_fourcc(CONFIG_VIDEO_PIXEL_FORMAT[0], CONFIG_VIDEO_PIXEL_FORMAT[1],
-				     CONFIG_VIDEO_PIXEL_FORMAT[2], CONFIG_VIDEO_PIXEL_FORMAT[3]);
+		fmt.pixelformat = VIDEO_FOURCC_FROM_STR(CONFIG_VIDEO_PIXEL_FORMAT);
 	}
 
-	LOG_INF("- Video format: %c%c%c%c %ux%u", (char)fmt.pixelformat,
-	       (char)(fmt.pixelformat >> 8), (char)(fmt.pixelformat >> 16),
-	       (char)(fmt.pixelformat >> 24), fmt.width, fmt.height);
+	LOG_INF("- Video format: %s %ux%u",
+		VIDEO_FOURCC_TO_STR(fmt.pixelformat), fmt.width, fmt.height);
 
 	if (video_set_format(video_dev, VIDEO_EP_OUT, &fmt)) {
 		LOG_ERR("Unable to set format");
@@ -179,8 +182,26 @@ int main(void)
 		fie.index++;
 	}
 
+	/* Get supported controls */
+	LOG_INF("- Supported controls:");
+
+	struct video_ctrl_query cq = {.id = VIDEO_CTRL_FLAG_NEXT_CTRL};
+
+	while (!video_query_ctrl(video_dev, &cq)) {
+		video_print_ctrl(video_dev, &cq);
+		cq.id |= VIDEO_CTRL_FLAG_NEXT_CTRL;
+	}
+
+	/* Set controls */
+	struct video_control ctrl = {.id = VIDEO_CID_HFLIP, .val = 1};
+
+	if (IS_ENABLED(CONFIG_VIDEO_CTRL_HFLIP)) {
+		video_set_ctrl(video_dev, &ctrl);
+	}
+
 #ifdef CONFIG_TEST
-	video_set_ctrl(video_dev, VIDEO_CID_CAMERA_TEST_PATTERN, (void *)1);
+	ctrl.id = VIDEO_CID_TEST_PATTERN;
+	video_set_ctrl(video_dev, &ctrl);
 #endif
 
 #if DT_HAS_CHOSEN(zephyr_display)
@@ -211,7 +232,8 @@ int main(void)
 		 * For some hardwares, such as the PxP used on i.MX RT1170 to do image rotation,
 		 * buffer alignment is needed in order to achieve the best performance
 		 */
-		buffers[i] = video_buffer_aligned_alloc(bsize, CONFIG_VIDEO_BUFFER_POOL_ALIGN);
+		buffers[i] = video_buffer_aligned_alloc(bsize, CONFIG_VIDEO_BUFFER_POOL_ALIGN,
+							K_FOREVER);
 		if (buffers[i] == NULL) {
 			LOG_ERR("Unable to alloc video buffer");
 			return 0;

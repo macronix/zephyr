@@ -91,6 +91,23 @@ static int gpio_stm32_flags_to_conf(gpio_flags_t flags, uint32_t *pincfg)
 		*pincfg = STM32_PINCFG_MODE_ANALOG;
 	}
 
+#if !defined(CONFIG_SOC_SERIES_STM32F1X)
+	switch (flags & (STM32_GPIO_SPEED_MASK << STM32_GPIO_SPEED_SHIFT)) {
+	case STM32_GPIO_VERY_HIGH_SPEED:
+		*pincfg |= STM32_OSPEEDR_VERY_HIGH_SPEED;
+		break;
+	case STM32_GPIO_HIGH_SPEED:
+		*pincfg |= STM32_OSPEEDR_HIGH_SPEED;
+		break;
+	case STM32_GPIO_MEDIUM_SPEED:
+		*pincfg |= STM32_OSPEEDR_MEDIUM_SPEED;
+		break;
+	default:
+		*pincfg |= STM32_OSPEEDR_LOW_SPEED;
+		break;
+	}
+#endif /* !CONFIG_SOC_SERIES_STM32F1X */
+
 	return 0;
 }
 
@@ -648,7 +665,7 @@ static int gpio_stm32_manage_callback(const struct device *dev,
 	return gpio_manage_callback(&data->cb, callback, set);
 }
 
-static const struct gpio_driver_api gpio_stm32_driver = {
+static DEVICE_API(gpio, gpio_stm32_driver) = {
 	.pin_configure = gpio_stm32_config,
 #if defined(CONFIG_GPIO_GET_CONFIG) && !defined(CONFIG_SOC_SERIES_STM32F1X)
 	.pin_get_config = gpio_stm32_get_config,
@@ -662,7 +679,6 @@ static const struct gpio_driver_api gpio_stm32_driver = {
 	.manage_callback = gpio_stm32_manage_callback,
 };
 
-#ifdef CONFIG_PM_DEVICE
 static int gpio_stm32_pm_action(const struct device *dev,
 				enum pm_device_action action)
 {
@@ -671,13 +687,15 @@ static int gpio_stm32_pm_action(const struct device *dev,
 		return gpio_stm32_clock_request(dev, true);
 	case PM_DEVICE_ACTION_SUSPEND:
 		return gpio_stm32_clock_request(dev, false);
+	case PM_DEVICE_ACTION_TURN_OFF:
+	case PM_DEVICE_ACTION_TURN_ON:
+		break;
 	default:
 		return -ENOTSUP;
 	}
 
 	return 0;
 }
-#endif /* CONFIG_PM_DEVICE */
 
 
 /**
@@ -693,7 +711,6 @@ static int gpio_stm32_pm_action(const struct device *dev,
 static int gpio_stm32_init(const struct device *dev)
 {
 	struct gpio_stm32_data *data = dev->data;
-	int ret;
 
 	data->dev = dev;
 
@@ -709,18 +726,8 @@ static int gpio_stm32_init(const struct device *dev)
 	LL_PWR_EnableVddIO2();
 	z_stm32_hsem_unlock(CFG_HW_RCC_SEMID);
 #endif
-	/* enable port clock (if runtime PM is not enabled) */
-	ret = gpio_stm32_clock_request(dev, !IS_ENABLED(CONFIG_PM_DEVICE_RUNTIME));
-	if (ret < 0) {
-		return ret;
-	}
 
-	if (IS_ENABLED(CONFIG_PM_DEVICE_RUNTIME)) {
-		pm_device_init_suspended(dev);
-	}
-	(void)pm_device_runtime_enable(dev);
-
-	return 0;
+	return pm_device_driver_init(dev, gpio_stm32_pm_action);
 }
 
 #define GPIO_DEVICE_INIT(__node, __suffix, __base_addr, __port, __cenr, __bus) \
@@ -772,3 +779,4 @@ GPIO_DEVICE_INIT_STM32_IF_OKAY(m, M);
 GPIO_DEVICE_INIT_STM32_IF_OKAY(n, N);
 GPIO_DEVICE_INIT_STM32_IF_OKAY(o, O);
 GPIO_DEVICE_INIT_STM32_IF_OKAY(p, P);
+GPIO_DEVICE_INIT_STM32_IF_OKAY(q, Q);

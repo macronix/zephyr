@@ -39,7 +39,7 @@ struct lpc_clock_state {
 #define CALIBRATION_INTERVAL CONFIG_SMARTBOND_LP_OSC_CALIBRATION_INTERVAL
 
 #ifdef CONFIG_TIMER_READS_ITS_FREQUENCY_AT_RUNTIME
-extern int z_clock_hw_cycles_per_sec;
+extern unsigned int z_clock_hw_cycles_per_sec;
 #endif
 
 static void calibration_work_cb(struct k_work *work);
@@ -603,7 +603,7 @@ int smartbond_clocks_init(const struct device *dev)
 	return 0;
 }
 
-static const struct clock_control_driver_api smartbond_clock_control_api = {
+static DEVICE_API(clock_control, smartbond_clock_control_api) = {
 	.on = smartbond_clock_control_on,
 	.off = smartbond_clock_control_off,
 	.get_rate = smartbond_clock_control_get_rate,

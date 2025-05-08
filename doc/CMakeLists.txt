@@ -16,6 +16,8 @@ set(SPHINXOPTS "-j auto -W --keep-going -T" CACHE STRING "Default Sphinx Options
 set(SPHINXOPTS_EXTRA "" CACHE STRING "Extra Sphinx Options (added to defaults)")
 set(LATEXMKOPTS "-halt-on-error -no-shell-escape" CACHE STRING "Default latexmk options")
 set(DT_TURBO_MODE OFF CACHE BOOL "Enable DT turbo mode")
+set(HW_FEATURES_TURBO_MODE OFF CACHE BOOL "Enable HW features turbo mode")
+set(HW_FEATURES_VENDOR_FILTER "" CACHE STRING "Vendor filter for HW features")
 set(DOC_TAG "development" CACHE STRING "Documentation tag")
 set(DTS_ROOTS "${ZEPHYR_BASE}" CACHE STRING "DT bindings root folders")
 
@@ -149,6 +151,21 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${GEN_DEVICETREE_
 #-------------------------------------------------------------------------------
 # html
 
+set(SPHINX_TAGS "${DOC_TAG}")
+if(HW_FEATURES_TURBO_MODE)
+  list(APPEND SPHINX_TAGS "hw_features_turbo")
+endif()
+
+set(SPHINX_TAGS_ARGS "")
+foreach(tag ${SPHINX_TAGS})
+  list(APPEND SPHINX_TAGS_ARGS "-t" "${tag}")
+endforeach()
+
+if(HW_FEATURES_VENDOR_FILTER)
+  list(JOIN HW_FEATURES_VENDOR_FILTER "," vendor_filter)
+  list(APPEND SPHINXOPTS "-D" "zephyr_hw_features_vendor_filter=${vendor_filter}")
+endif()
+
 add_doc_target(
   html
   COMMAND ${CMAKE_COMMAND} -E env ${SPHINX_ENV} OUTPUT_DIR=${DOCS_HTML_DIR}
@@ -157,7 +174,7 @@ add_doc_target(
     -c ${DOCS_CFG_DIR}
     -d ${DOCS_DOCTREE_DIR}
     -w ${DOCS_BUILD_DIR}/html.log
-    -t ${DOC_TAG}
+    ${SPHINX_TAGS_ARGS}
     ${SPHINXOPTS}
     ${SPHINXOPTS_EXTRA}
     ${DOCS_SRC_DIR}
@@ -179,7 +196,7 @@ add_dependencies(html devicetree)
 
 add_doc_target(
   html-live
-  COMMAND ${CMAKE_COMMAND} -E env ${SPHINX_ENV}
+  COMMAND ${CMAKE_COMMAND} -E env ${SPHINX_ENV} OUTPUT_DIR=${DOCS_HTML_DIR}
   ${SPHINXAUTOBUILD}
     --watch ${DOCS_CFG_DIR}
     --ignore ${DOCS_BUILD_DIR}
@@ -187,7 +204,7 @@ add_doc_target(
     -c ${DOCS_CFG_DIR}
     -d ${DOCS_DOCTREE_DIR}
     -w ${DOCS_BUILD_DIR}/html.log
-    -t ${DOC_TAG}
+    ${SPHINX_TAGS_ARGS}
     ${SPHINXOPTS}
     ${SPHINXOPTS_EXTRA}
     ${DOCS_SRC_DIR}
@@ -214,7 +231,7 @@ add_doc_target(
     -c ${DOCS_CFG_DIR}
     -d ${DOCS_DOCTREE_DIR}
     -w ${DOCS_BUILD_DIR}/latex.log
-    -t ${DOC_TAG}
+    ${SPHINX_TAGS_ARGS}
     -t convertimages
     ${SPHINXOPTS}
     ${SPHINXOPTS_EXTRA}
@@ -266,7 +283,7 @@ add_doc_target(
     -c ${DOCS_CFG_DIR}
     -d ${DOCS_DOCTREE_DIR}
     -w ${DOCS_BUILD_DIR}/linkcheck.log
-    -t ${DOC_TAG}
+    ${SPHINX_TAGS_ARGS}
     ${SPHINXOPTS}
     ${SPHINXOPTS_EXTRA}
     ${DOCS_SRC_DIR}

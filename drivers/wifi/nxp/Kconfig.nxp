@@ -1,14 +1,16 @@
-# Copyright 2022-2024 NXP
+# Copyright 2022-2025 NXP
 # SPDX-License-Identifier: Apache-2.0
 
 menuconfig WIFI_NXP
 	bool "NXP Wi-Fi driver support"
-	select NET_L2_WIFI_MGMT if NETWORKING
-	select WIFI_USE_NATIVE_NETWORKING if NETWORKING
-	select NET_L2_ETHERNET_MGMT if NETWORKING && NET_L2_ETHERNET
+	select NET_L2_WIFI_MGMT
+	select WIFI_USE_NATIVE_NETWORKING
+	select NET_L2_ETHERNET
+	select NET_L2_ETHERNET_MGMT
 	select SDHC if !SOC_SERIES_RW6XX
 	select SDIO_STACK if !SOC_SERIES_RW6XX
-	select WIFI_NM if WIFI_NM_WPA_SUPPLICANT
+	select WIFI_NM
+	select EVENTS
 	depends on DT_HAS_NXP_WIFI_ENABLED
 	help
 	  Enable NXP SoC Wi-Fi support.
@@ -17,15 +19,12 @@ if WIFI_NXP
 
 module = WIFI_NXP
 
+config HEAP_MEM_POOL_ADD_SIZE_NXP_WIFI
+	def_int 25984 if WIFI_NM_WPA_SUPPLICANT
+	def_int 51200
+
 config WIFI_MGMT_SCAN_CHAN_MAX_MANUAL
 	default 50
-
-config NXP_WIFI_BUILD_ONLY_MODE
-	bool "Build only mode (do not link wireless firmware blob)"
-	help
-	  Skip linking the firmware blob into the Wi-Fi build. This will
-	  not result in a functional application, but allows the Wi-Fi
-	  driver to be built without binary blobs
 
 config NXP_WIFI_CUSTOM
 	bool "Custom NXP Wi-Fi part"
@@ -207,6 +206,28 @@ config NXP_IW416_MURATA_1XK_M2
 
 endchoice
 
+choice NXP_IW416_REGION
+	prompt "Select NXP Wi-Fi Regulatory Domain"
+	depends on NXP_IW416 && !NXP_WIFI_CUSTOM
+	default NXP_IW416_REGION_WW
+
+config NXP_IW416_REGION_WW
+	bool "Regulatory domain WW"
+
+config NXP_IW416_REGION_CA
+	bool "Regulatory domain CA"
+
+config NXP_IW416_REGION_JP
+	bool "Regulatory domain JP"
+
+config NXP_IW416_REGION_EU
+	bool "Regulatory domain EU"
+
+config NXP_IW416_REGION_US
+	bool "Regulatory domain US"
+
+endchoice
+
 choice NXP_IW61X_MODULE
 	prompt "Select NXP IW61X module"
 	depends on NXP_IW61X && !NXP_WIFI_CUSTOM
@@ -259,6 +280,28 @@ config NXP_IW611_MURATA_2DL_M2
 
 endchoice
 
+choice NXP_IW61X_REGION
+	prompt "Select NXP Wi-Fi Regulatory Domain"
+	depends on NXP_IW61X && !NXP_WIFI_CUSTOM
+	default NXP_IW61X_REGION_WW
+
+config NXP_IW61X_REGION_WW
+	bool "Regulatory domain WW"
+
+config NXP_IW61X_REGION_CA
+	bool "Regulatory domain CA"
+
+config NXP_IW61X_REGION_JP
+	bool "Regulatory domain JP"
+
+config NXP_IW61X_REGION_EU
+	bool "Regulatory domain EU"
+
+config NXP_IW61X_REGION_US
+	bool "Regulatory domain US"
+
+endchoice
+
 choice NXP_88W8801_MODULE
 	prompt "Select NXP 88W8801 module"
 	depends on NXP_88W8801 && !NXP_WIFI_CUSTOM
@@ -308,7 +351,7 @@ endchoice
 
 config NXP_WIFI_SHELL
 	bool "NXP Wi-Fi shell"
-	depends on SHELL
+	default y if SHELL
 	help
 	  NXP Wi-Fi shell commands support.
 
@@ -316,7 +359,8 @@ menu "Wi-Fi driver Stack configurations"
 
 config NXP_WIFI_MON_TASK_STACK_SIZE
 	int "Mon thread stack size"
-	default 1152
+	depends on NXP_RW610
+	default 3072
 	help
 	  This option specifies the size of the stack used by the mon task.
 
@@ -328,7 +372,7 @@ config NXP_WIFI_WLCMGR_TASK_STACK_SIZE
 
 config NXP_WIFI_POWERSAVE_TASK_STACK_SIZE
 	int "Wifi powersave task stack size"
-	default 512
+	default 1024
 	help
 	  This option specifies the size of the stack used by the wifi powersave task.
 
@@ -350,6 +394,51 @@ config NXP_WIFI_SCAN_TASK_STACK_SIZE
 	default 2048
 	help
 	  This option specifies the size of the stack used by the wifi scan task.
+
+endmenu
+
+menu "Wi-Fi thread priority configurations"
+
+config NXP_WIFI_MON_TASK_PRIO
+	int "Mon task priority"
+	depends on NXP_RW610
+	default 4
+	help
+	  This option specifies the priority of the mon task.
+
+config NXP_WIFI_WLCMGR_TASK_PRIO
+	int "Wlcmgr task priority"
+	default 2
+	help
+	  This option specifies the priority of the wlcmgr task.
+
+config NXP_WIFI_POWERSAVE_TASK_PRIO
+	int "Wifi powersave task priority"
+	default 4
+	help
+	  This option specifies the priority of the wifi powersave task.
+
+config NXP_WIFI_TX_TASK_PRIO
+	int "Wifi driver TX task priority"
+	default 3
+	depends on NXP_WIFI_WMM
+	help
+	  This option specifies the priority of the wifi driver TX task,
+	  and better to keep all the TX/RX tasks having same priority to
+	  get higher throughput. The relative priorities of different tasks
+	  need to remain the same as the current ones, which are tuned.
+
+config NXP_WIFI_DRIVER_TASK_PRIO
+	int "Wifi driver task priority"
+	default 2
+	help
+	  This option specifies the priority of the wifi driver task.
+
+config NXP_WIFI_SCAN_TASK_PRIO
+	int "Wifi scan task priority"
+	default 4
+	help
+	  This option specifies the priority of the wifi scan task.
 
 endmenu
 
@@ -442,6 +531,8 @@ config NXP_WIFI_WMM_UAPSD
 config NXP_WIFI_ROAMING
 	bool "Wi-Fi Soft Roaming"
 	default y
+	select WIFI_NM_WPA_SUPPLICANT_ROAMING if WIFI_NM_WPA_SUPPLICANT
+	select WIFI_NM_WPA_SUPPLICANT_SKIP_DHCP_ON_ROAMING if WIFI_NM_WPA_SUPPLICANT
 	help
 	  This option enables Soft Roaming support in the Wi-Fi driver.
 
@@ -464,10 +555,17 @@ config NXP_WIFI_11V
 
 config NXP_WIFI_11R
 	bool "802.11R Support"
+	default n if (NXP_RW610 && !WIFI_NM_WPA_SUPPLICANT)
 	default y
 	depends on NXP_88W8987 || NXP_IW416 || NXP_RW610 || NXP_WIFI_CUSTOM
 	help
 	  This option enables the use of 802.11r support.
+
+config NXP_WIFI_RTS_THRESHOLD
+	bool "Set RTS Threshold Support"
+	default y
+	help
+	  This option enables the set of rts threshold support.
 
 config NXP_WIFI_INACTIVITY_TIMEOUT_EXT
 	bool "Inactivity Timeout Ext Support"
@@ -487,7 +585,8 @@ config NXP_WIFI_SOFTAP_SUPPORT
 	bool "Wi-Fi SoftAP Support"
 	select NET_DHCPV4_SERVER
 	select WIFI_NM_HOSTAPD_AP if WIFI_NM_WPA_SUPPLICANT
-	default y
+	imply WIFI_NM_HOSTAPD_WPS if WIFI_NM_HOSTAPD_AP && WIFI_NM_WPA_SUPPLICANT_WPS
+	imply WIFI_NM_HOSTAPD_CRYPTO_ENTERPRISE if WIFI_NM_HOSTAPD_AP && WIFI_NM_WPA_SUPPLICANT_CRYPTO_ENTERPRISE
 	help
 	  Option to enable Wi-Fi SoftAP functions in the Wi-Fi driver.
 
@@ -636,7 +735,7 @@ config NXP_WIFI_5GHz_SUPPORT
 
 config NXP_WIFI_TX_RX_ZERO_COPY
 	bool "Zero memory copy TX/RX data packets"
-	default y if NXP_RW610
+	depends on NXP_RW610
 	imply NET_IPV4_FRAGMENT
 	help
 	  This option enables the Zero memory copy of data packets in Wi-Fi driver data path.
@@ -668,6 +767,7 @@ config NXP_WIFI_RESET
 config NXP_WIFI_ECSA
 	bool "ECSA"
 	default y
+	depends on NXP_WIFI_SOFTAP_SUPPORT
 	help
 	  This option is used to do channel switch according to spec.
 
@@ -783,6 +883,11 @@ config NXP_WIFI_WLAN_CALDATA_3ANT_DIVERSITY
 	help
 	  This option is used to enable three antenna diversity.
 
+config NXP_OVERRIDE_CALIBRATION_DATA
+	bool "override default calibriation data"
+	help
+	  This option is used to override default calibration data.
+
 endif # NXP_RW610
 
 config NXP_WIFI_11AX_TWT
@@ -791,6 +896,13 @@ config NXP_WIFI_11AX_TWT
 	depends on NXP_WIFI_11AX
 	help
 	  This option enables 11ax TWT in the Wi-Fi driver.
+
+config NXP_WIFI_PKT_FWD
+	bool "Wi-Fi packet forward"
+	default y if NXP_RW610
+	depends on NXP_WIFI_SOFTAP_SUPPORT
+	help
+	  This option enables Wi-Fi packet forward on SoftAP.
 
 config NXP_WIFI_DTIM_PERIOD
 	bool "Wi-Fi DTIM period"
@@ -845,12 +957,14 @@ config NXP_WIFI_CLOCKSYNC
 config NXP_WIFI_COMPRESS_TX_PWTBL
 	bool "Compress TX Power Table Support"
 	default y
+	depends on (NXP_RW610 || NXP_IW61X_REGION_WW)
 	help
 	  This option enables the use of Compress TX Power Table support.
 
 config NXP_WIFI_COMPRESS_RU_TX_PWTBL
 	bool "Compress RU TX Power Table Support"
 	default y
+	depends on (NXP_RW610 || NXP_IW61X_REGION_WW)
 	help
 	  This option enables the use of Compress RU TX Power Table support.
 
@@ -933,9 +1047,9 @@ if NXP_WIFI_SMOKE_TESTS
 config NXP_WIFI_SIGMA_AGENT
 	bool "Wi-Fi Alliance Sigma Agent Support"
 	select POSIX_API
-	select PTHREAD_IPC
+	select POSIX_THREADS
 	select PTHREAD_CREATE_BARRIER
-	select TIMER
+	select POSIX_TIMERS
 	help
 	  This option is to enable Wi-Fi Alliance Sigma Agent support in the Wi-Fi driver.
 

@@ -4,14 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#define DT_DRV_COMPAT nxp_lptmr
+
 #include <zephyr/devicetree.h>
 #include <zephyr/sys/util.h>
-#if DT_HAS_COMPAT_STATUS_OKAY(nxp_kinetis_lptmr)
-#define DT_DRV_COMPAT nxp_kinetis_lptmr
-#else
-#define DT_DRV_COMPAT nxp_lptmr
-#endif
-
 #include <zephyr/drivers/counter.h>
 #include <zephyr/irq.h>
 #include <fsl_lptmr.h>
@@ -150,7 +146,7 @@ static int mcux_lptmr_init(const struct device *dev)
 	return 0;
 }
 
-static const struct counter_driver_api mcux_lptmr_driver_api = {
+static DEVICE_API(counter, mcux_lptmr_driver_api) = {
 	.start = mcux_lptmr_start,
 	.stop = mcux_lptmr_stop,
 	.get_value = mcux_lptmr_get_value,

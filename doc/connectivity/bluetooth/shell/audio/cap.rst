@@ -28,7 +28,7 @@ register callbacks.
      lock          :Lock the set
      release       :Release the set [force]
      sirk          :Set the currently used SIRK <sirk>
-     get_sirk      :Get the currently used SIRK
+     get_info      :Get CSIS info
      sirk_rsp      :Set the response used in SIRK requests <accept, accept_enc,
                     reject, oob>
 
@@ -40,7 +40,7 @@ Setting a new SIRK
 
 This command can modify the currently used SIRK. To get the new RSI to advertise on air,
 :code:`bt adv-data` or :code:`bt advertise` must be called again to set the new advertising data.
-If :code:`CONFIG_BT_CSIP_SET_MEMBER_NOTIFIABLE` is enabled, this will also notify connected
+If :code:`CONFIG_BT_CSIP_SET_MEMBER_SIRK_NOTIFIABLE` is enabled, this will also notify connected
 clients.
 
 .. code-block:: console
@@ -55,10 +55,14 @@ This command can get the currently used SIRK.
 
 .. code-block:: console
 
-   uart:~$ cap_acceptor get_sirk
-   SIRK
-   36 04 9a dc 66 3a a1 a1 |6...f:..
-   1d 9a 2f 41 01 73 3e 01 |../A.s>.
+   uart:~$ cap_acceptor get_info
+   Info for 0x2003b0c8
+           SIRK
+   00000000: 20 37 0a 00 95 c4 04 20  00 00 00 00 f1 79 09 00 | 7.....  .....y..|
+           Set size: 2
+           Rank: 1
+           Lockable: true
+           Locked: false
 
 CAP Initiator
 *************
@@ -271,6 +275,7 @@ the optionally included CSIS instance by calling (:code:`cap_commander discover`
                                  <type: public/random> <adv_sid> <broadcast_id>
                                  [<pa_interval>] [<sync_bis>] [<metadata>]
      broadcast_reception_stop  : Stop broadcast reception <src_id [...]>
+     distribute_broadcast_code : Distribute broadcast code <src_id [...]> <broadcast_code>
 
 
 Before being able to perform any stream operation, the device must also perform the
@@ -460,3 +465,21 @@ Starting and stopping broadcast reception
    uart:~$ cap_commander broadcast_reception_stop 0
    Stopping broadcast reception on 1 connection(s)
    Broadcast reception stop completed
+
+Distributing the broadcast code
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: console
+
+   uart:~$ bt connect <device A>
+   Connected: <device A>
+   uart:~$ bap_init
+   uart:~$ cap_commander discover
+   discovery completed with CSIS
+   uart:~$ bap_broadcast_assistant discover
+   BASS discover done with 1 recv states
+   uart:~$ cap_commander broadcast_reception_start <device B> 0 4
+   Starting broadcast reception on 1 connection(s)
+   Broadcast reception start completed
+   uart:~$ cap_commander distribute_broadcast_code 0 "BroadcastCode"
+   Distribute broadcast code completed

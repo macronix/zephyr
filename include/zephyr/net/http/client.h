@@ -197,9 +197,16 @@ struct http_response {
 	 */
 	uint16_t http_status_code;
 
+	/**
+	 * HTTP Content-Range response field value. Consist of range_start,
+	 * range_end and total_size. Total is set to 0 if not supplied.
+	 */
+	struct http_content_range content_range;
+
 	uint8_t cl_present : 1;       /**< Is Content-Length field present */
 	uint8_t body_found : 1;       /**< Is message body found */
 	uint8_t message_complete : 1; /**< Is HTTP message parsing complete */
+	uint8_t cr_present : 1;       /**< Is Content-Range field present */
 };
 
 /** HTTP client internal data that the application should not touch
@@ -252,6 +259,13 @@ struct http_request {
 
 	/** Length of the user supplied receive buffer */
 	size_t recv_buf_len;
+
+	/** Length of the unprocessed data left inside the user supplied receive
+	 *  buffer. In typical HTTP processing this should be 0, however in case
+	 *  of switching protocols, there may be some data left belonging to the
+	 *  new protocol.
+	 */
+	size_t data_len;
 
 	/** The URL for this request, for example: /index.html */
 	const char *url;

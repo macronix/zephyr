@@ -99,6 +99,7 @@ IndentCaseLabels: false
 IndentGotoLabels: false
 IndentWidth: 8
 InsertBraces: true
+InsertNewlineAtEOF: true
 SpaceBeforeInheritanceColon: False
 SpaceBeforeParens: ControlStatementsExceptControlMacros
 SortIncludes: Never
@@ -111,3 +112,4 @@ WhitespaceSensitiveMacros:
   - LISTIFY
   - STRINGIFY
   - Z_STRINGIFY
+  - DT_FOREACH_PROP_ELEM_SEP

@@ -1,4 +1,6 @@
 common:
+  platform_key:
+    - arch
   tags:
     - kernel
     - benchmark
@@ -11,11 +13,16 @@ common:
     type: one_line
     regex:
       - "PROJECT EXECUTION SUCCESSFUL"
+    record:
+      regex:
+        - "REC: (?P<metric>.*) - (?P<description>.*):(?P<cycles>.*) cycles ,(?P<nanoseconds>.*) ns"
+  extra_configs:
+    - CONFIG_BENCHMARK_RECORDING=y
 
 tests:
-  benchmark.wait_queues.dumb:
+  benchmark.wait_queues.simple:
     extra_configs:
-      - CONFIG_WAITQ_DUMB=y
+      - CONFIG_WAITQ_SIMPLE=y
 
   benchmark.wait_queues.scalable:
     extra_configs:

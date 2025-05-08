@@ -18,22 +18,26 @@ endif()
 # NOTE: ${linker_script_gen} will be produced at build-time; not at configure-time
 macro(configure_linker_script linker_script_gen linker_pass_define)
   set(extra_dependencies ${ARGN})
+  set(cmake_linker_script_settings
+      ${PROJECT_BINARY_DIR}/include/generated/ld_script_settings_${linker_pass_define}.cmake
+  )
 
   if(CONFIG_CMAKE_LINKER_GENERATOR)
+
+    zephyr_linker_generate_linker_settings_file(${cmake_linker_script_settings})
+
     add_custom_command(
       OUTPUT ${linker_script_gen}
+      DEPENDS
+        ${extra_dependencies}
+        ${cmake_linker_script_settings}
+        ${DEVICE_API_LD_TARGET}
       COMMAND ${CMAKE_COMMAND}
+        -C ${cmake_linker_script_settings}
         -DPASS="${linker_pass_define}"
-        -DFORMAT="$<TARGET_PROPERTY:linker,FORMAT>"
-        -DENTRY="$<TARGET_PROPERTY:linker,ENTRY>"
-        -DMEMORY_REGIONS="$<TARGET_PROPERTY:linker,MEMORY_REGIONS>"
-        -DGROUPS="$<TARGET_PROPERTY:linker,GROUPS>"
-        -DSECTIONS="$<TARGET_PROPERTY:linker,SECTIONS>"
-        -DSECTION_SETTINGS="$<TARGET_PROPERTY:linker,SECTION_SETTINGS>"
-        -DSYMBOLS="$<TARGET_PROPERTY:linker,SYMBOLS>"
         -DOUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/${linker_script_gen}
         -P ${ZEPHYR_BASE}/cmake/linker/ld/ld_script.cmake
-      )
+    )
   else()
     set(template_script_defines ${linker_pass_define})
     list(TRANSFORM template_script_defines PREPEND "-D")
@@ -147,7 +151,7 @@ macro(toolchain_linker_finalize)
   endforeach()
   string(REPLACE ";" " " zephyr_std_libs "${zephyr_std_libs}")
 
-  set(link_libraries "<LINK_FLAGS> <OBJECTS> -o <TARGET> <LINK_LIBRARIES> ${zephyr_std_libs}")
+  set(link_libraries "<OBJECTS> -o <TARGET> <LINK_LIBRARIES> ${zephyr_std_libs}")
   set(common_link "<LINK_FLAGS> ${link_libraries}")
 
   set(CMAKE_ASM_LINK_EXECUTABLE "<CMAKE_ASM_COMPILER> <FLAGS> <CMAKE_ASM_LINK_FLAGS> ${common_link}")

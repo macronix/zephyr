@@ -203,7 +203,7 @@ static int gpio_cat1_pin_interrupt_configure(const struct device *dev, gpio_pin_
 		break;
 
 	default:
-		return -ENOTSUP;
+		break;
 	}
 
 	Cy_GPIO_SetInterruptEdge(base, pin, trig_pdl);
@@ -221,7 +221,7 @@ static int gpio_cat1_manage_callback(const struct device *port,
 				    callback, set);
 }
 
-static const struct gpio_driver_api gpio_cat1_api = {
+static DEVICE_API(gpio, gpio_cat1_api) = {
 	.pin_configure = gpio_cat1_configure,
 	.port_get_raw = gpio_cat1_port_get_raw,
 	.port_set_masked_raw = gpio_cat1_port_set_masked_raw,

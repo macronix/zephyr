@@ -17,7 +17,7 @@
 #include "coex.h"
 #include "coex_struct.h"
 #include "fmac_main.h"
-#include "fmac_api.h"
+#include "common/fmac_api_common.h"
 
 LOG_MODULE_DECLARE(wifi_nrf, CONFIG_WIFI_NRF70_LOG_LEVEL);
 
@@ -103,7 +103,7 @@ const uint16_t config_buffer_5G[] = {
 /* Shared antenna */
 const uint32_t ch_config_sha[] = {
 	0x00000028, 0x00000000, 0x001e1023, 0x00000000, 0x00000000,
-	0x00000000, 0x00000021, 0x000002ca, 0x00000050, 0x00000000,
+	0x00000000, 0x00000021, 0x000002ca, 0x0000005A, 0x00000000,
 	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
 	0x00000000
 };
@@ -247,10 +247,8 @@ int nrf_wifi_config_sr_switch(bool separate_antennas)
 
 	if (separate_antennas) {
 		gpio_pin_set_dt(&sr_rf_switch_spec, 0x0);
-		LOG_INF("GPIO P1.10 set to 0");
 	} else {
 		gpio_pin_set_dt(&sr_rf_switch_spec, 0x1);
-		LOG_INF("GPIO P1.10 set to 1");
 	}
 
 	return 0;

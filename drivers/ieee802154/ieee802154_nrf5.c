@@ -72,7 +72,7 @@ static const struct device *nrf5_dev;
 #define NSEC_PER_TEN_SYMBOLS (10 * IEEE802154_PHY_OQPSK_780_TO_2450MHZ_SYMBOL_PERIOD_NS)
 
 #if defined(CONFIG_IEEE802154_NRF5_UICR_EUI64_ENABLE)
-#if defined(CONFIG_SOC_NRF5340_CPUAPP)
+#if defined(CONFIG_SOC_NRF5340_CPUAPP) || defined(CONFIG_SOC_SERIES_NRF54LX)
 #if defined(CONFIG_TRUSTED_EXECUTION_NONSECURE)
 #error "NRF_UICR->OTP is not supported to read from non-secure"
 #else
@@ -80,7 +80,7 @@ static const struct device *nrf5_dev;
 #endif /* CONFIG_TRUSTED_EXECUTION_NONSECURE */
 #else
 #define EUI64_ADDR (NRF_UICR->CUSTOMER)
-#endif /* CONFIG_SOC_NRF5340_CPUAPP */
+#endif /* CONFIG_SOC_NRF5340_CPUAPP || CONFIG_SOC_SERIES_NRF54LX*/
 #endif /* CONFIG_IEEE802154_NRF5_UICR_EUI64_ENABLE */
 
 #if defined(CONFIG_IEEE802154_NRF5_UICR_EUI64_ENABLE)
@@ -172,7 +172,7 @@ static void nrf5_rx_thread(void *arg1, void *arg2, void *arg3)
 		 * The last 2 bytes contain LQI or FCS, depending if
 		 * automatic CRC handling is enabled or not, respectively.
 		 */
-		if (IS_ENABLED(CONFIG_IEEE802154_NRF5_FCS_IN_LENGTH)) {
+		if (IS_ENABLED(CONFIG_IEEE802154_L2_PKT_INCL_FCS)) {
 			pkt_len = rx_frame->psdu[0];
 		} else {
 			pkt_len = rx_frame->psdu[0] -  IEEE802154_FCS_LENGTH;
@@ -419,7 +419,7 @@ static int handle_ack(struct nrf5_802154_data *nrf5_radio)
 	}
 #endif
 
-	if (IS_ENABLED(CONFIG_IEEE802154_NRF5_FCS_IN_LENGTH)) {
+	if (IS_ENABLED(CONFIG_IEEE802154_L2_PKT_INCL_FCS)) {
 		ack_len = nrf5_radio->ack_frame.psdu[0];
 	} else {
 		ack_len = nrf5_radio->ack_frame.psdu[0] - IEEE802154_FCS_LENGTH;
@@ -585,7 +585,7 @@ static int nrf5_tx(const struct device *dev,
 		return -EMSGSIZE;
 	}
 
-	LOG_DBG("%p (%u)", payload, payload_len);
+	LOG_DBG("%p (%u)", (void *)payload, payload_len);
 
 	nrf5_radio->tx_psdu[0] = payload_len + IEEE802154_FCS_LENGTH;
 	memcpy(nrf5_radio->tx_psdu + 1, payload, payload_len);
@@ -730,7 +730,7 @@ static int nrf5_stop(const struct device *dev)
 	return 0;
 }
 
-#if defined(CONFIG_NRF_802154_CARRIER_FUNCTIONS)
+#if defined(CONFIG_IEEE802154_CARRIER_FUNCTIONS)
 static int nrf5_continuous_carrier(const struct device *dev)
 {
 	ARG_UNUSED(dev);
@@ -743,6 +743,23 @@ static int nrf5_continuous_carrier(const struct device *dev)
 	}
 
 	LOG_DBG("Continuous carrier wave transmission started (channel: %d)",
+		nrf_802154_channel_get());
+
+	return 0;
+}
+
+static int nrf_modulated_carrier(const struct device *dev, const uint8_t *data)
+{
+	ARG_UNUSED(dev);
+
+	nrf_802154_tx_power_set(nrf5_data.txpwr);
+
+	if (!nrf_802154_modulated_carrier(data)) {
+		LOG_ERR("Failed to enter modulated carrier state");
+		return -EIO;
+	}
+
+	LOG_DBG("Modulated carrier wave transmission started (channel: %d)",
 		nrf_802154_channel_get());
 
 	return 0;
@@ -1271,15 +1288,16 @@ static const struct ieee802154_radio_api nrf5_radio_api = {
 	.set_txpower = nrf5_set_txpower,
 	.start = nrf5_start,
 	.stop = nrf5_stop,
-#if defined(CONFIG_NRF_802154_CARRIER_FUNCTIONS)
+#if defined(CONFIG_IEEE802154_CARRIER_FUNCTIONS)
 	.continuous_carrier = nrf5_continuous_carrier,
+	.modulated_carrier = nrf_modulated_carrier,
 #endif
 	.tx = nrf5_tx,
 	.ed_scan = nrf5_energy_scan_start,
 	.get_time = nrf5_get_time,
 	.get_sch_acc = nrf5_get_acc,
 	.configure = nrf5_configure,
-	.attr_get = nrf5_attr_get
+	.attr_get = nrf5_attr_get,
 };
 
 #if defined(CONFIG_NET_L2_IEEE802154)

@@ -1078,7 +1078,7 @@ static int tls_set_credential(struct tls_context *tls,
 	case TLS_CREDENTIAL_CA_CERTIFICATE:
 		return tls_add_ca_certificate(tls, cred);
 
-	case TLS_CREDENTIAL_SERVER_CERTIFICATE:
+	case TLS_CREDENTIAL_PUBLIC_CERTIFICATE:
 		return tls_add_own_cert(tls, cred);
 
 	case TLS_CREDENTIAL_PRIVATE_KEY:
@@ -1133,7 +1133,7 @@ static int tls_mbedtls_set_credentials(struct tls_context *tls)
 
 			if (cred->type == TLS_CREDENTIAL_CA_CERTIFICATE) {
 				ca_cert_present = true;
-			} else if (cred->type == TLS_CREDENTIAL_SERVER_CERTIFICATE) {
+			} else if (cred->type == TLS_CREDENTIAL_PUBLIC_CERTIFICATE) {
 				own_cert_present = true;
 			}
 		}
@@ -2141,13 +2141,15 @@ int ztls_connect_ctx(struct tls_context *ctx, const struct sockaddr *addr,
 {
 	int ret;
 	int sock_flags;
+	bool is_non_block;
 
 	sock_flags = zsock_fcntl(ctx->sock, F_GETFL, 0);
 	if (sock_flags < 0) {
 		return -EIO;
 	}
 
-	if (sock_flags & O_NONBLOCK) {
+	is_non_block = sock_flags & O_NONBLOCK;
+	if (is_non_block) {
 		(void)zsock_fcntl(ctx->sock, F_SETFL,
 				  sock_flags & ~O_NONBLOCK);
 	}
@@ -2157,7 +2159,7 @@ int ztls_connect_ctx(struct tls_context *ctx, const struct sockaddr *addr,
 		return ret;
 	}
 
-	if (sock_flags & O_NONBLOCK) {
+	if (is_non_block) {
 		(void)zsock_fcntl(ctx->sock, F_SETFL, sock_flags);
 	}
 
@@ -2188,6 +2190,10 @@ int ztls_connect_ctx(struct tls_context *ctx, const struct sockaddr *addr,
 		ret = tls_mbedtls_handshake(
 			ctx, K_MSEC(CONFIG_NET_SOCKETS_CONNECT_TIMEOUT));
 		if (ret < 0) {
+			if ((ret == -EAGAIN) && !is_non_block) {
+				ret = -ETIMEDOUT;
+			}
+
 			goto error;
 		}
 

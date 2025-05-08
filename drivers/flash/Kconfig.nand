@@ -3,10 +3,12 @@
 
 menuconfig SPI_NAND
 	bool "SPI NAND Flash"
+	default y
+	depends on DT_HAS_JEDEC_SPI_NAND_ENABLED
 	select FLASH_HAS_DRIVER_ENABLED
 	select FLASH_HAS_EXPLICIT_ERASE
 	select FLASH_HAS_PAGE_LAYOUT
-	depends on SPI
+	select SPI
 
 if SPI_NAND
 

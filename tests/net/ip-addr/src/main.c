@@ -35,6 +35,7 @@ LOG_MODULE_REGISTER(net_test, CONFIG_NET_IPV6_LOG_LEVEL);
 #endif
 
 static struct net_if *default_iface;
+static struct net_if *second_iface;
 
 #define TEST_BYTE_1(value, expected)				 \
 	do {							 \
@@ -223,10 +224,21 @@ ZTEST(ip_addr_fn, test_ipv6_addresses)
 					    0, 0, 0, 0, 0, 0, 0, 0x2 } } };
 	struct in6_addr addr6_pref3 = { { { 0x20, 0x01, 0x0d, 0xb8, 0x64, 0, 0,
 					    0, 0, 0, 0, 0, 0, 0, 0, 0x2 } } };
+	struct in6_addr ula = { { { 0xfc, 0x00, 0xaa, 0xaa, 0, 0, 0, 0,
+				    0, 0, 0, 0, 0xd1, 0xd2, 0xd3, 0xd4 } } };
+	struct in6_addr ula2 = { { { 0xfc, 0x00, 0xaa, 0xaa, 0, 0, 0, 0,
+				     0, 0, 0, 0, 0x1, 0x2, 0x3, 0x4 } } };
+	struct in6_addr ula3 = { { { 0xfc, 0x00, 0xaa, 0xaa, 0, 0, 0, 0,
+				     0, 0, 0, 0, 0xf1, 0xf2, 0xf3, 0xf4 } } };
+	struct in6_addr ula4 = { { { 0xfc, 0x00, 0xaa, 0xaa, 0, 0, 0, 0,
+				     0, 0, 0, 0, 0xf1, 0xf2, 0xf3, 0xf5 } } };
+	struct in6_addr ula5 = { { { 0xfc, 0x00, 0xaa, 0xaa, 0, 0, 0, 0,
+				     0, 0, 0, 0, 0xf1, 0xf2, 0xf3, 0xf6 } } };
 	struct in6_addr *tmp;
 	const struct in6_addr *out;
 	struct net_if_addr *ifaddr1, *ifaddr2;
 	struct net_if_mcast_addr *ifmaddr1;
+	struct net_if_ipv6_prefix *prefix;
 	struct net_if *iface;
 	int i;
 
@@ -368,6 +380,172 @@ ZTEST(ip_addr_fn, test_ipv6_addresses)
 		     "IPv6 removing address failed\n");
 	zassert_true(net_if_ipv6_addr_rm(default_iface, &addr6_pref2),
 		     "IPv6 removing address failed\n");
+
+	/**TESTPOINTS: Check what IPv6 address is selected when some
+	 * addresses are in preferred state and some in deprecated state.
+	 */
+	ifaddr2 = net_if_ipv6_addr_add(default_iface, &ula,
+				       NET_ADDR_AUTOCONF, 0);
+	zassert_not_null(ifaddr2, "IPv6 ula address add failed");
+
+	ifaddr2->addr_state = NET_ADDR_PREFERRED;
+
+	out = net_if_ipv6_select_src_addr(default_iface, &ula2);
+	zassert_not_null(out, "IPv6 src ula addr selection failed, "
+			 "iface %p\n", default_iface);
+
+	DBG("Selected IPv6 address %s, iface %p\n",
+	    net_sprint_ipv6_addr(out), iface);
+
+	zassert_false(memcmp(out->s6_addr, &ula.s6_addr, sizeof(struct in6_addr)),
+		      "IPv6 wrong src ula address selected, iface %p\n", iface);
+
+	/* Allow selection of deprecated address if no other address
+	 * is available.
+	 */
+	ifaddr2->addr_state = NET_ADDR_DEPRECATED;
+
+	out = net_if_ipv6_select_src_addr(default_iface, &ula3);
+	zassert_not_null(out, "IPv6 src ula addr selection failed, "
+			 "iface %p\n", default_iface);
+
+	/* Then add another address with preferred state and check that we
+	 * still select the deprecated address as it is a better match.
+	 */
+	ifaddr2 = net_if_ipv6_addr_add(default_iface, &ula3,
+				       NET_ADDR_AUTOCONF, 0);
+	zassert_not_null(ifaddr2, "IPv6 ula address add failed");
+
+	ifaddr2->addr_state = NET_ADDR_PREFERRED;
+
+	out = net_if_ipv6_select_src_addr(default_iface, &ula2);
+	zassert_not_null(out, "IPv6 src ula addr selection failed, "
+			 "iface %p\n", default_iface);
+
+	DBG("Selected IPv6 address %s, iface %p\n",
+	    net_sprint_ipv6_addr(out), iface);
+
+	zassert_false(memcmp(out->s6_addr, &ula3.s6_addr, sizeof(struct in6_addr)),
+		      "IPv6 wrong src ula address selected, iface %p\n", iface);
+
+	zassert_true(net_if_ipv6_addr_rm(default_iface, &ula),
+		     "IPv6 removing address failed\n");
+
+	prefix = net_if_ipv6_prefix_add(default_iface, &ula4, 96, 3600);
+	zassert_not_null(prefix, "IPv6 ula prefix add failed");
+
+	ifaddr1 = net_if_ipv6_addr_add(default_iface, &ula4,
+				       NET_ADDR_AUTOCONF, 0);
+	zassert_not_null(ifaddr1, "IPv6 ula address add failed");
+
+	ifaddr2->addr_state = NET_ADDR_DEPRECATED;
+
+	out = net_if_ipv6_select_src_addr(default_iface, &ula5);
+	zassert_not_null(out, "IPv6 src ula addr selection failed, "
+			 "iface %p\n", default_iface);
+
+	DBG("Selected IPv6 address %s, iface %p\n",
+	    net_sprint_ipv6_addr(out), iface);
+
+	zassert_false(memcmp(out->s6_addr, &ula4.s6_addr, sizeof(struct in6_addr)),
+		      "IPv6 wrong src ula address selected, iface %p\n", iface);
+
+	zassert_true(net_if_ipv6_addr_rm(default_iface, &ula3),
+		     "IPv6 removing address failed\n");
+
+	zassert_true(net_if_ipv6_addr_rm(default_iface, &ula4),
+		     "IPv6 removing address failed\n");
+}
+
+ZTEST(ip_addr_fn, test_ipv4_ll_address_select_default_first)
+{
+	struct net_if *iface;
+	const struct in_addr *out;
+	struct net_if_addr *ifaddr;
+	struct in_addr lladdr4_1 = { { { 169, 254, 0, 1 } } };
+	struct in_addr lladdr4_2 = { { { 169, 254, 0, 3 } } };
+	struct in_addr netmask = { { { 255, 255, 0, 0 } } };
+	struct in_addr dst4 = { { { 169, 254, 0, 2 } } };
+
+	ifaddr = net_if_ipv4_addr_add(default_iface, &lladdr4_1, NET_ADDR_MANUAL, 0);
+	zassert_not_null(ifaddr, "IPv4 interface address add failed");
+	zassert_true(net_ipv4_is_my_addr(&lladdr4_1),
+		     "My IPv4 address check failed");
+
+	net_if_ipv4_set_netmask_by_addr(default_iface, &lladdr4_1, &netmask);
+
+	ifaddr = net_if_ipv4_addr_add(second_iface, &lladdr4_2, NET_ADDR_MANUAL, 0);
+	zassert_not_null(ifaddr, "IPv4 interface address add failed");
+	zassert_true(net_ipv4_is_my_addr(&lladdr4_2),
+		     "My IPv4 address check failed");
+
+	net_if_ipv4_set_netmask_by_addr(second_iface, &lladdr4_2, &netmask);
+
+	/* In case two network interfaces have two equally good addresses
+	 * (same net mask), default interface should be selected.
+	 */
+	out = net_if_ipv4_select_src_addr(NULL, &dst4);
+	iface = net_if_ipv4_select_src_iface(&dst4);
+	zassert_not_null(out, "IPv4 src addr selection failed, iface %p\n",
+			 iface);
+
+	DBG("Selected IPv4 address %s, iface %p\n", net_sprint_ipv4_addr(out),
+	    iface);
+
+	zassert_equal_ptr(iface, default_iface, "Wrong iface selected");
+	zassert_equal(out->s_addr, lladdr4_1.s_addr,
+		      "IPv4 wrong src address selected, iface %p\n", iface);
+}
+
+ZTEST(ip_addr_fn, test_ipv4_ll_address_select)
+{
+	struct net_if *iface;
+	const struct in_addr *out;
+	struct net_if_addr *ifaddr;
+	struct in_addr lladdr4_1 = { { { 169, 254, 250, 1 } } };
+	struct in_addr lladdr4_2 = { { { 169, 254, 253, 1 } } };
+	struct in_addr netmask_1 = { { { 255, 255, 255, 0 } } };
+	struct in_addr netmask_2 = { { { 255, 255, 255, 252 } } };
+	struct in_addr dst4_1 = { { { 169, 254, 250, 2 } } };
+	struct in_addr dst4_2 = { { { 169, 254, 253, 2 } } };
+
+	ifaddr = net_if_ipv4_addr_add(default_iface, &lladdr4_1, NET_ADDR_MANUAL, 0);
+	zassert_not_null(ifaddr, "IPv4 interface address add failed");
+	zassert_true(net_ipv4_is_my_addr(&lladdr4_1),
+		     "My IPv4 address check failed");
+
+	net_if_ipv4_set_netmask_by_addr(default_iface, &lladdr4_1, &netmask_1);
+
+	ifaddr = net_if_ipv4_addr_add(second_iface, &lladdr4_2, NET_ADDR_MANUAL, 0);
+	zassert_not_null(ifaddr, "IPv4 interface address add failed");
+	zassert_true(net_ipv4_is_my_addr(&lladdr4_2),
+		     "My IPv4 address check failed");
+
+	net_if_ipv4_set_netmask_by_addr(second_iface, &lladdr4_2, &netmask_2);
+
+	out = net_if_ipv4_select_src_addr(NULL, &dst4_1);
+	iface = net_if_ipv4_select_src_iface(&dst4_1);
+	zassert_not_null(out, "IPv4 src addr selection failed, iface %p\n",
+			 iface);
+
+	DBG("Selected IPv4 address %s, iface %p\n", net_sprint_ipv4_addr(out),
+	    iface);
+
+	zassert_equal(out->s_addr, lladdr4_1.s_addr,
+		      "IPv4 wrong src address selected, iface %p\n", iface);
+	zassert_equal_ptr(iface, default_iface, "Wrong iface selected");
+
+	out = net_if_ipv4_select_src_addr(NULL, &dst4_2);
+	iface = net_if_ipv4_select_src_iface(&dst4_2);
+	zassert_not_null(out, "IPv4 src addr selection failed, iface %p\n",
+			 iface);
+
+	DBG("Selected IPv4 address %s, iface %p\n", net_sprint_ipv4_addr(out),
+	    iface);
+
+	zassert_equal(out->s_addr, lladdr4_2.s_addr,
+		      "IPv4 wrong src address selected, iface %p\n", iface);
+	zassert_equal_ptr(iface, second_iface, "Wrong iface selected");
 }
 
 ZTEST(ip_addr_fn, test_ipv4_addresses)
@@ -703,11 +881,25 @@ ZTEST(ip_addr_fn, test_private_ipv4_addresses)
 
 }
 
+void clear_addr4(struct net_if *iface, struct net_if_addr *addr, void *user_data)
+{
+	addr->is_used = false;
+}
+
+static void test_before(void *f)
+{
+	ARG_UNUSED(f);
+
+	net_if_ipv4_addr_foreach(default_iface, clear_addr4, NULL);
+	net_if_ipv4_addr_foreach(second_iface, clear_addr4, NULL);
+}
+
 void *test_setup(void)
 {
-	default_iface = net_if_get_first_by_type(&NET_L2_GET_NAME(DUMMY));
+	default_iface = net_if_get_by_index(1);
+	second_iface = net_if_get_by_index(2);
 
 	return NULL;
 }
 
-ZTEST_SUITE(ip_addr_fn, NULL, test_setup, NULL, NULL, NULL);
+ZTEST_SUITE(ip_addr_fn, NULL, test_setup, test_before, NULL, NULL);

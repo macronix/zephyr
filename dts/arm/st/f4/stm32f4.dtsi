@@ -18,6 +18,7 @@
 #include <zephyr/dt-bindings/adc/stm32f4_adc.h>
 #include <zephyr/dt-bindings/reset/stm32f2_4_7_reset.h>
 #include <zephyr/dt-bindings/sensor/qdec_stm32.h>
+#include <zephyr/dt-bindings/power/stm32_pwr.h>
 #include <freq.h>
 
 / {
@@ -551,8 +552,9 @@
 				       STM32_ADC_RES(8, 0x02)
 				       STM32_ADC_RES(6, 0x03)>;
 			sampling-times = <3 15 28 56 84 112 144 480>;
-			st,adc-clock-source = <SYNC>;
-			st,adc-sequencer = <FULLY_CONFIGURABLE>;
+			st,adc-clock-source = "SYNC";
+			st,adc-sequencer = "FULLY_CONFIGURABLE";
+			st,adc-oversampler = "OVERSAMPLER_NONE";
 		};
 
 		dma1: dma@40026000 {
@@ -585,6 +587,22 @@
 		};
 	};
 
+	pwr: power@40007000 {
+		compatible = "st,stm32-pwr";
+		reg = <0x40007000 0x400>; /* PWR register bank */
+		status = "disabled";
+
+		wkup-pins-nb = <1>;
+
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		wkup-pin@1 {
+			reg = <0x1>;
+			wkup-gpios = <&gpioa 0 STM32_PWR_WKUP_PIN_NOT_MUXED>;
+		};
+	};
+
 	die_temp: dietemp {
 		compatible = "st,stm32-temp-cal";
 		ts-cal1-addr = <0x1FFF7A2C>;
@@ -592,7 +610,7 @@
 		ts-cal1-temp = <30>;
 		ts-cal2-temp = <110>;
 		ts-cal-vrefanalog = <3300>;
-		io-channels = <&adc1 18>;
+		io-channels = <&adc1 16>;
 		status = "disabled";
 	};
 

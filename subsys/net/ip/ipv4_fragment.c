@@ -206,7 +206,7 @@ static void reassemble_packet(struct net_ipv4_reassembly *reass)
 	net_pkt_set_data(pkt, &ipv4_access);
 	net_pkt_set_ip_reassembled(pkt, true);
 
-	LOG_DBG("New pkt %p IPv4 len is %d bytes", pkt, net_pkt_get_len(pkt));
+	LOG_DBG("New pkt %p IPv4 len is %zd bytes", pkt, net_pkt_get_len(pkt));
 
 	/* We need to use the queue when feeding the packet back into the
 	 * IP stack as we might run out of stack if we call processing_data()
@@ -440,6 +440,8 @@ static int send_ipv4_fragment(struct net_pkt *pkt, uint16_t rand_id, uint16_t fi
 	net_pkt_cursor_init(frag_pkt);
 	net_pkt_cursor_backup(pkt, &cur_pkt);
 	net_pkt_cursor_backup(frag_pkt, &cur);
+
+	net_pkt_set_ll_proto_type(frag_pkt, net_pkt_ll_proto_type(pkt));
 
 	/* Copy the original IPv4 headers back to the fragment packet */
 	if (net_pkt_copy(frag_pkt, pkt, net_pkt_ip_hdr_len(pkt))) {

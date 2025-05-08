@@ -94,9 +94,8 @@ int main(void)
 		return 0;
 	}
 
-	printk("Video device detected, format: %c%c%c%c %ux%u\n", (char)fmt.pixelformat,
-	       (char)(fmt.pixelformat >> 8), (char)(fmt.pixelformat >> 16),
-	       (char)(fmt.pixelformat >> 24), fmt.width, fmt.height);
+	printk("Video device detected, format: %s %ux%u\n",
+		VIDEO_FOURCC_TO_STR(fmt.pixelformat), fmt.width, fmt.height);
 
 	if (caps.min_line_count != LINE_COUNT_HEIGHT) {
 		LOG_ERR("Partial framebuffers not supported by this sample");
@@ -105,7 +104,7 @@ int main(void)
 
 	/* Alloc Buffers */
 	for (i = 0; i < ARRAY_SIZE(buffers); i++) {
-		buffers[i] = video_buffer_alloc(fmt.pitch * fmt.height);
+		buffers[i] = video_buffer_alloc(fmt.pitch * fmt.height, K_FOREVER);
 		if (buffers[i] == NULL) {
 			LOG_ERR("Unable to alloc video buffer");
 			return 0;

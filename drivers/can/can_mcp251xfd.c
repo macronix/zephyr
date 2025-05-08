@@ -1394,6 +1394,12 @@ static inline int mcp251xfd_init_iocon_reg(const struct device *dev)
 		tmp |= MCP251XFD_REG_IOCON_SOF;
 	}
 
+	if (dev_cfg->xstby_enable) {
+		tmp &= ~MCP251XFD_REG_IOCON_TRIS0;
+		tmp &= ~MCP251XFD_REG_IOCON_PM0;
+		tmp |= MCP251XFD_REG_IOCON_XSTBYEN;
+	}
+
 	*reg = sys_cpu_to_le32(tmp);
 
 	return  mcp251xfd_write(dev, MCP251XFD_REG_IOCON, MCP251XFD_REG_SIZE);
@@ -1682,7 +1688,7 @@ static int mcp251xfd_init(const struct device *dev)
 	return ret;
 }
 
-static const struct can_driver_api mcp251xfd_api_funcs = {
+static DEVICE_API(can, mcp251xfd_api_funcs) = {
 	.get_capabilities = mcp251xfd_get_capabilities,
 	.set_mode = mcp251xfd_set_mode,
 	.set_timing = mcp251xfd_set_timing,
@@ -1749,6 +1755,7 @@ static const struct can_driver_api mcp251xfd_api_funcs = {
 		.int_gpio_dt = GPIO_DT_SPEC_INST_GET(inst, int_gpios),                             \
                                                                                                    \
 		.sof_on_clko = DT_INST_PROP(inst, sof_on_clko),                                    \
+		.xstby_enable = DT_INST_PROP(inst, xstby_enable),                                  \
 		.clko_div = DT_INST_ENUM_IDX(inst, clko_div),                                      \
 		.pll_enable = DT_INST_PROP(inst, pll_enable),                                      \
 		.timestamp_prescaler = DT_INST_PROP(inst, timestamp_prescaler),                    \

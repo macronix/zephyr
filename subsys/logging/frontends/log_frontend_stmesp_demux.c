@@ -5,6 +5,8 @@
  */
 
 #include <zephyr/logging/log_frontend_stmesp_demux.h>
+#include <zephyr/logging/log_frontend_stmesp.h>
+#include <zephyr/logging/log_ctrl.h>
 #include <zephyr/sys/mpsc_pbuf.h>
 #include <zephyr/sys/__assert.h>
 #include <zephyr/logging/log_msg.h>
@@ -14,6 +16,14 @@ LOG_MODULE_REGISTER(stmesp_demux);
 BUILD_ASSERT(sizeof(struct log_frontend_stmesp_demux_log_header) == sizeof(uint32_t),
 		"Must fit in a word");
 
+#ifndef CONFIG_LOG_FRONTEND_STPESP_TURBO_SOURCE_PORT_ID
+#define CONFIG_LOG_FRONTEND_STPESP_TURBO_SOURCE_PORT_ID 0
+#endif
+
+#ifndef CONFIG_LOG_FRONTEND_STMESP_TURBO_LOG_BASE
+#define CONFIG_LOG_FRONTEND_STMESP_TURBO_LOG_BASE 0x8000
+#endif
+
 #define NUM_OF_ACTIVE CONFIG_LOG_FRONTEND_STMESP_DEMUX_ACTIVE_PACKETS
 #define M_ID_OFF      16
 #define M_ID_MASK     (BIT_MASK(16) << M_ID_OFF)
@@ -22,12 +32,37 @@ BUILD_ASSERT(sizeof(struct log_frontend_stmesp_demux_log_header) == sizeof(uint3
 #define M_CH_HW_EVENT 0x00800000
 #define M_CH_INVALID  0xFFFFFFFF
 
+#define APP_M_ID  0x22
+#define FLPR_M_ID 0x2D
+#define PPR_M_ID  0x2E
+
 struct log_frontend_stmesp_demux_active_entry {
 	sys_snode_t node;
 	uint32_t m_ch;
 	uint32_t ts;
 	struct log_frontend_stmesp_demux_log *packet;
 	int off;
+};
+
+/* Coprocessors (FLPR, PPR) sends location where APP can find strings and logging
+ * source names utilizing the fact that APP has access to FLPR/PPR memory if it is
+ * an owner of that coprocessor. During the initialization FLPR/PPR sends 2 DMTS32
+ * to the specific channel. First word is an address where logging source constant
+ * data section is located and second is where a section with addresses to constant
+ * strings used for logging is located.
+ */
+struct log_frontend_stmesp_coproc_sources {
+	uint32_t m_id;
+	uint32_t data_cnt;
+	union {
+		struct {
+			const struct log_source_const_data *log_const;
+			uintptr_t *log_str_section;
+		} data;
+		struct {
+			uintptr_t data[2];
+		} raw_data;
+	};
 };
 
 struct log_frontend_stmesp_demux {
@@ -46,9 +81,20 @@ struct log_frontend_stmesp_demux {
 
 	const uint16_t *m_ids;
 
-	uint32_t m_ids_cnt;
+	uint32_t *source_ids;
+
+	uint16_t m_ids_cnt;
+
+	uint16_t source_id_len;
 
 	uint32_t dropped;
+
+	struct log_frontend_stmesp_coproc_sources coproc_sources[2];
+};
+
+struct log_frontend_stmesp_entry_source_pair {
+	uint16_t entry_id;
+	uint16_t source_id;
 };
 
 static uint32_t buffer[CONFIG_LOG_FRONTEND_STMESP_DEMUX_BUFFER_SIZE]
@@ -62,6 +108,40 @@ static void notify_drop(const struct mpsc_pbuf_buffer *buffer,
 			const union mpsc_pbuf_generic *packet)
 {
 	demux.dropped++;
+}
+
+static void store_source_id(uint16_t m_id, uint16_t entry_id, uint16_t source_id)
+{
+	uint32_t *source_ids_data = &demux.source_ids[m_id * (demux.source_id_len + 1)];
+	uint32_t *wr_idx = source_ids_data;
+	struct log_frontend_stmesp_entry_source_pair *source_ids =
+		(struct log_frontend_stmesp_entry_source_pair *)&source_ids_data[1];
+
+	source_ids[*wr_idx].entry_id = entry_id;
+	source_ids[*wr_idx].source_id = source_id;
+	*wr_idx = *wr_idx + 1;
+	if (*wr_idx == (demux.source_id_len)) {
+		*wr_idx = 0;
+	}
+}
+
+static uint16_t get_source_id(uint16_t m_id, uint16_t entry_id)
+{
+	uint32_t *source_ids_data = &demux.source_ids[m_id * (demux.source_id_len + 1)];
+	int32_t rd_idx = source_ids_data[0];
+	uint32_t cnt = demux.source_id_len;
+	struct log_frontend_stmesp_entry_source_pair *source_ids =
+		(struct log_frontend_stmesp_entry_source_pair *)&source_ids_data[1];
+
+	do {
+		rd_idx = (rd_idx == 0) ? (demux.source_id_len - 1) : (rd_idx - 1);
+		if (source_ids[rd_idx].entry_id == entry_id) {
+			return source_ids[rd_idx].source_id;
+		}
+		cnt--;
+	} while (cnt);
+
+	return 0;
 }
 
 static uint32_t calc_wlen(uint32_t total_len)
@@ -116,6 +196,8 @@ int log_frontend_stmesp_demux_init(const struct log_frontend_stmesp_demux_config
 	demux.dropped = 0;
 	demux.curr_m_ch = M_CH_INVALID;
 	demux.curr = NULL;
+	demux.source_ids = config->source_id_buf;
+	demux.source_id_len = config->source_id_buf_len / config->m_ids_cnt - 1;
 
 	err = k_mem_slab_init(&demux.mslab, slab_buf,
 			      sizeof(struct log_frontend_stmesp_demux_active_entry),
@@ -194,8 +276,41 @@ static uint8_t get_major_id(uint16_t m_id)
 	return 0;
 }
 
-static void log_frontend_stmesp_demux_trace_point(uint16_t m_id, uint16_t id, uint64_t *ts,
-						  uint32_t *data)
+static void store_turbo_log0(uint16_t m_id, uint16_t id, uint64_t *ts, uint16_t source_id)
+{
+	struct log_frontend_stmesp_demux_trace_point packet = {
+		.valid = 1,
+		.type = LOG_FRONTEND_STMESP_DEMUX_TYPE_TRACE_POINT,
+		.content_invalid = 0,
+		.has_data = 0,
+		.timestamp = ts ? *ts : 0,
+		.major = m_id,
+		.source_id = source_id,
+		.id = id,
+		.data = 0};
+	static const size_t wlen = sizeof(packet) / sizeof(uint32_t);
+
+	mpsc_pbuf_put_data(&demux.pbuf, (const uint32_t *)&packet, wlen);
+}
+
+static void store_turbo_log1(uint16_t m_id, uint16_t id, uint64_t *ts, uint32_t data)
+{
+	struct log_frontend_stmesp_demux_trace_point packet = {
+		.valid = 1,
+		.type = LOG_FRONTEND_STMESP_DEMUX_TYPE_TRACE_POINT,
+		.content_invalid = 0,
+		.has_data = 0,
+		.timestamp = ts ? *ts : 0,
+		.major = m_id,
+		.source_id = get_source_id(m_id, id),
+		.id = id,
+		.data = data};
+	static const size_t wlen = sizeof(packet) / sizeof(uint32_t);
+
+	mpsc_pbuf_put_data(&demux.pbuf, (const uint32_t *)&packet, wlen);
+}
+
+static void store_tracepoint(uint16_t m_id, uint16_t id, uint64_t *ts, uint32_t *data)
 {
 	struct log_frontend_stmesp_demux_trace_point packet = {.valid = 1,
 					       .type = LOG_FRONTEND_STMESP_DEMUX_TYPE_TRACE_POINT,
@@ -252,6 +367,92 @@ static void garbage_collector(uint32_t now)
 	}
 }
 
+int log_frontend_stmesp_demux_log0(uint16_t source_id, uint64_t *ts)
+{
+	if (skip) {
+		return 0;
+	}
+
+	if (demux.curr_m_ch == M_CH_INVALID) {
+		return -EINVAL;
+	}
+
+	if (demux.curr != NULL) {
+		/* Previous package was incompleted. Finish it and potentially
+		 * mark as incompleted if not all data is received.
+		 */
+		log_frontend_stmesp_demux_packet_end();
+		return -EINVAL;
+	}
+
+	uint16_t ch = demux.curr_m_ch & C_ID_MASK;
+	uint16_t m = get_major_id(demux.curr_m_ch >> M_ID_OFF);
+
+	if (ch < CONFIG_LOG_FRONTEND_STMESP_TURBO_LOG_BASE) {
+		return -EINVAL;
+	}
+
+	store_turbo_log0(m, ch, ts, source_id);
+
+	return 1;
+}
+
+void log_frontend_stmesp_demux_source_id(uint16_t data)
+{
+	if (skip) {
+		return;
+	}
+
+	if (demux.curr_m_ch == M_CH_INVALID) {
+		return;
+	}
+
+	uint16_t ch = demux.curr_m_ch & C_ID_MASK;
+	uint16_t m = get_major_id(demux.curr_m_ch >> M_ID_OFF);
+
+	store_source_id(m, ch, data);
+}
+
+const char *log_frontend_stmesp_demux_sname_get(uint32_t m_id, uint16_t s_id)
+{
+	if (!IS_ENABLED(CONFIG_LOG_FRONTEND_STMESP_TURBO_LOG)) {
+		return "";
+	}
+
+	if (demux.m_ids[m_id] == APP_M_ID) {
+		return log_source_name_get(0, s_id);
+	} else if (m_id == demux.coproc_sources[0].m_id) {
+		return demux.coproc_sources[0].data.log_const[s_id].name;
+	} else if (m_id == demux.coproc_sources[1].m_id) {
+		return demux.coproc_sources[1].data.log_const[s_id].name;
+	}
+
+	return "unknown";
+}
+
+const char *log_frontend_stmesp_demux_str_get(uint32_t m_id, uint16_t s_id)
+{
+	if (!IS_ENABLED(CONFIG_LOG_FRONTEND_STMESP_TURBO_LOG)) {
+		return "";
+	}
+
+	uintptr_t *log_str_start = NULL;
+
+	if (demux.m_ids[m_id] == APP_M_ID) {
+		log_str_start = (uintptr_t *)TYPE_SECTION_START(log_stmesp_ptr);
+	} else if (m_id == demux.coproc_sources[0].m_id) {
+		log_str_start = demux.coproc_sources[0].data.log_str_section;
+	} else if (m_id == demux.coproc_sources[1].m_id) {
+		log_str_start = demux.coproc_sources[1].data.log_str_section;
+	}
+
+	if (log_str_start) {
+		return (const char *)log_str_start[s_id];
+	}
+
+	return "unknown";
+}
+
 int log_frontend_stmesp_demux_packet_start(uint32_t *data, uint64_t *ts)
 {
 	if (skip) {
@@ -273,6 +474,24 @@ int log_frontend_stmesp_demux_packet_start(uint32_t *data, uint64_t *ts)
 		return 1;
 	}
 
+	uint16_t ch = demux.curr_m_ch & C_ID_MASK;
+	uint16_t m = get_major_id(demux.curr_m_ch >> M_ID_OFF);
+
+	if (IS_ENABLED(CONFIG_LOG_FRONTEND_STMESP_TURBO_LOG) &&
+	    (ch == CONFIG_LOG_FRONTEND_STPESP_TURBO_SOURCE_PORT_ID)) {
+		struct log_frontend_stmesp_coproc_sources *src =
+			&demux.coproc_sources[demux.m_ids[m] == FLPR_M_ID ? 0 : 1];
+
+		if (src->data_cnt >= 2) {
+			/* Unexpected packet. */
+			return -EINVAL;
+		}
+
+		src->m_id = m;
+		src->raw_data.data[src->data_cnt++] = (uintptr_t)*data;
+		return 0;
+	}
+
 	if (demux.curr != NULL) {
 		/* Previous package was incompleted. Finish it and potentially
 		 * mark as incompleted if not all data is received.
@@ -281,14 +500,13 @@ int log_frontend_stmesp_demux_packet_start(uint32_t *data, uint64_t *ts)
 		return -EINVAL;
 	}
 
-	uint16_t ch = demux.curr_m_ch & C_ID_MASK;
-	uint16_t m = get_major_id(demux.curr_m_ch >> M_ID_OFF);
-
 	if (ch >= CONFIG_LOG_FRONTEND_STMESP_TP_CHAN_BASE) {
-		uint32_t id = (uint32_t)ch - CONFIG_LOG_FRONTEND_STMESP_TP_CHAN_BASE;
-
 		/* Trace point */
-		log_frontend_stmesp_demux_trace_point(m, id, ts, data);
+		if (ch >= CONFIG_LOG_FRONTEND_STMESP_TURBO_LOG_BASE) {
+			store_turbo_log1(m, ch, ts, *data);
+		} else {
+			store_tracepoint(m, ch, ts, data);
+		}
 
 		return 1;
 	}

@@ -97,12 +97,13 @@
 		&sdmmc1_d3_pc11 &sdmmc1_ck_pc12 &sdmmc1_cmd_pd2>;
 	pinctrl-names = "default";
 	cd-gpios = <&gpioi 15 GPIO_ACTIVE_LOW>;
+	disk-name = "SD";
 };
 
 &adc1 {
 	pinctrl-0 = <&adc1_in3_pa3 &adc1_in10_pc0>;
 	pinctrl-names = "default";
-	st,adc-clock-source = <SYNC>;
+	st,adc-clock-source = "SYNC";
 	st,adc-prescaler = <2>;
 	status = "okay";
 };

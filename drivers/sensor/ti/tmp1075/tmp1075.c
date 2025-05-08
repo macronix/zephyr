@@ -151,7 +151,7 @@ static int tmp1075_channel_get(const struct device *dev, enum sensor_channel cha
 	return 0;
 }
 
-static const struct sensor_driver_api tmp1075_driver_api = {
+static DEVICE_API(sensor, tmp1075_driver_api) = {
 	.attr_set = tmp1075_attr_set,
 	.attr_get = tmp1075_attr_get,
 	.sample_fetch = tmp1075_sample_fetch,
@@ -170,7 +170,7 @@ static int setup_interrupts(const struct device *dev)
 	int result;
 
 	if (!gpio_is_ready_dt(alert_gpio)) {
-		LOG_ERR("tmp1075: gpio controller %s not ready", alert_gpio->port->name);
+		LOG_ERR("gpio controller %s not ready", alert_gpio->port->name);
 		return -ENODEV;
 	}
 

@@ -97,7 +97,7 @@ int main(void)
 
 	/* Alloc video buffers and enqueue for capture */
 	for (i = 0; i < ARRAY_SIZE(buffers); i++) {
-		buffers[i] = video_buffer_alloc(bsize);
+		buffers[i] = video_buffer_alloc(bsize, K_FOREVER);
 		if (buffers[i] == NULL) {
 			LOG_ERR("Unable to alloc video buffer");
 			return 0;
@@ -106,21 +106,17 @@ int main(void)
 		video_enqueue(video_dev, VIDEO_EP_OUT, buffers[i]);
 	}
 
-#ifdef CONFIG_VIDEO_HFLIP
-	/* Video flip image horizontally */
-	if (video_set_ctrl(video_dev, VIDEO_CID_HFLIP, (void *)1)) {
-		LOG_ERR("Unable to set video control (HFLIP)");
-		return 0;
-	}
-#endif
+	/* Set controls */
+	struct video_control ctrl = {.id = VIDEO_CID_HFLIP, .val = 1};
 
-#ifdef CONFIG_VIDEO_VFLIP
-	/* Video flip image vertically */
-	if (video_set_ctrl(video_dev, VIDEO_CID_VFLIP, (void *)1)) {
-		LOG_ERR("Unable to set video control (VFLIP)");
-		return 0;
+	if (IS_ENABLED(CONFIG_VIDEO_HFLIP)) {
+		video_set_ctrl(video_dev, &ctrl);
 	}
-#endif
+
+	if (IS_ENABLED(CONFIG_VIDEO_VFLIP)) {
+		ctrl.id = VIDEO_CID_VFLIP;
+		video_set_ctrl(video_dev, &ctrl);
+	}
 
 	/* Start video capture */
 	if (video_stream_start(video_dev)) {
@@ -131,11 +127,10 @@ int main(void)
 	display_blanking_off(display_dev);
 
 	const lv_img_dsc_t video_img = {
-		.header.always_zero = 0,
 		.header.w = CONFIG_VIDEO_WIDTH,
 		.header.h = CONFIG_VIDEO_HEIGHT,
 		.data_size = CONFIG_VIDEO_WIDTH * CONFIG_VIDEO_HEIGHT * sizeof(lv_color_t),
-		.header.cf = LV_IMG_CF_TRUE_COLOR,
+		.header.cf = LV_COLOR_FORMAT_NATIVE,
 		.data = (const uint8_t *)buffers[0]->buffer,
 	};
 

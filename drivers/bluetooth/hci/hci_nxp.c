@@ -1,5 +1,5 @@
 /*
- * Copyright 2023-2024 NXP
+ * Copyright 2023-2025 NXP
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -16,6 +16,7 @@
 #include <zephyr/drivers/flash.h>
 #include <zephyr/bluetooth/hci_types.h>
 #include <soc.h>
+#include <zephyr/pm/policy.h>
 
 #include <fwk_platform_ble.h>
 #include <fwk_platform.h>
@@ -39,12 +40,6 @@ struct hci_data {
 #define LOG_LEVEL CONFIG_BT_HCI_DRIVER_LOG_LEVEL
 LOG_MODULE_REGISTER(bt_driver);
 
-#define HCI_IRQ_N        DT_INST_IRQ_BY_NAME(0, hci_int, irq)
-#define HCI_IRQ_P        DT_INST_IRQ_BY_NAME(0, hci_int, priority)
-#if DT_INST_IRQ_HAS_NAME(0, wakeup_int)
-#define HCI_WAKEUP_IRQ_N DT_INST_IRQ_BY_NAME(0, wakeup_int, irq)
-#define HCI_WAKEUP_IRQ_P DT_INST_IRQ_BY_NAME(0, wakeup_int, priority)
-#endif
 /* Vendor specific commands */
 #define HCI_CMD_STORE_BT_CAL_DATA_OCF                   0x61U
 #define HCI_CMD_STORE_BT_CAL_DATA_PARAM_LENGTH          32U
@@ -77,18 +72,22 @@ LOG_MODULE_REGISTER(bt_driver);
 #if !defined(CONFIG_BT_HCI_SET_PUBLIC_ADDR)
 #define bt_nxp_set_mac_address(public_addr) 0
 #endif
+
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(standby), okay) && defined(CONFIG_PM) &&\
+	defined(CONFIG_HCI_NXP_ENABLE_AUTO_SLEEP)
+#define HCI_NXP_LOCK_STANDBY_BEFORE_SEND
+#endif
+
 /* -------------------------------------------------------------------------- */
 /*                              Public prototypes                             */
 /* -------------------------------------------------------------------------- */
-
-extern int32_t ble_hci_handler(void);
-extern int32_t ble_wakeup_done_handler(void);
 
 /* -------------------------------------------------------------------------- */
 /*                             Private functions                              */
 /* -------------------------------------------------------------------------- */
 
-#if defined(CONFIG_HCI_NXP_ENABLE_AUTO_SLEEP) || defined(CONFIG_HCI_NXP_SET_CAL_DATA)
+#if defined(CONFIG_HCI_NXP_ENABLE_AUTO_SLEEP) || defined(CONFIG_HCI_NXP_SET_CAL_DATA) ||\
+	defined(CONFIG_BT_HCI_SET_PUBLIC_ADDR)
 static int nxp_bt_send_vs_command(uint16_t opcode, const uint8_t *params, uint8_t params_len)
 {
 	if (IS_ENABLED(CONFIG_BT_HCI_HOST)) {
@@ -110,7 +109,7 @@ static int nxp_bt_send_vs_command(uint16_t opcode, const uint8_t *params, uint8_
 		return 0;
 	}
 }
-#endif /* CONFIG_HCI_NXP_ENABLE_AUTO_SLEEP || CONFIG_HCI_NXP_SET_CAL_DATA */
+#endif
 
 #if defined(CONFIG_HCI_NXP_ENABLE_AUTO_SLEEP)
 static int nxp_bt_enable_controller_autosleep(void)
@@ -179,7 +178,10 @@ static int bt_nxp_set_mac_address(const bt_addr_t *public_addr)
 	uint8_t addrOUI[BD_ADDR_OUI_PART_SIZE] = {BD_ADDR_OUI};
 	uint8_t uid[16] = {0};
 	uint8_t uuidLen;
-	uint8_t hciBuffer[12];
+	uint8_t params[HCI_CMD_BT_HOST_SET_MAC_ADDR_PARAM_LENGTH] = {
+		BT_USER_BD,
+		0x06U
+	};
 
 	/* If no public address is provided by the user, use a unique address made
 	 * from the device's UID (unique ID)
@@ -199,18 +201,12 @@ static int bt_nxp_set_mac_address(const bt_addr_t *public_addr)
 		bt_addr_copy((bt_addr_t *)bleDeviceAddress, public_addr);
 	}
 
-	hciBuffer[0] = BT_HCI_H4_CMD;
-	memcpy((void *)&hciBuffer[1], (const void *)&opcode, 2U);
-	/* Set HCI parameter length */
-	hciBuffer[3] = HCI_CMD_BT_HOST_SET_MAC_ADDR_PARAM_LENGTH;
-	/* Set command parameter ID */
-	hciBuffer[4] = BT_USER_BD;
-	/* Set command parameter length */
-	hciBuffer[5] = (uint8_t)6U;
-	memcpy(hciBuffer + 6U, (const void *)bleDeviceAddress,
-	       BD_ADDR_UUID_PART_SIZE + BD_ADDR_OUI_PART_SIZE);
+	memcpy(&params[2], (const void *)bleDeviceAddress,
+		BD_ADDR_UUID_PART_SIZE + BD_ADDR_OUI_PART_SIZE);
+
 	/* Send the command */
-	return PLATFORM_SendHciMessage(hciBuffer, 12U);
+	return nxp_bt_send_vs_command(opcode, params,
+					HCI_CMD_BT_HOST_SET_MAC_ADDR_PARAM_LENGTH);
 }
 #endif /* CONFIG_BT_HCI_SET_PUBLIC_ADDR */
 
@@ -377,19 +373,23 @@ K_THREAD_DEFINE(nxp_hci_rx_thread, CONFIG_BT_DRV_RX_STACK_SIZE, bt_rx_thread, NU
 static void hci_rx_cb(uint8_t packetType, uint8_t *data, uint16_t len)
 {
 	struct hci_data hci_rx_frame;
+	int ret;
 
 	hci_rx_frame.packetType = packetType;
 	hci_rx_frame.data = k_malloc(len);
 
 	if (!hci_rx_frame.data) {
 		LOG_ERR("Failed to allocate RX buffer");
+		return;
 	}
 
 	memcpy(hci_rx_frame.data, data, len);
 	hci_rx_frame.len = len;
 
-	if (k_msgq_put(&rx_msgq, &hci_rx_frame, K_NO_WAIT) < 0) {
-		LOG_ERR("Failed to push RX data to message queue");
+	ret = k_msgq_put(&rx_msgq, &hci_rx_frame, K_NO_WAIT);
+	if (ret < 0) {
+		LOG_ERR("Failed to push RX data to message queue: %d", ret);
+		k_free(hci_rx_frame.data);
 	}
 }
 
@@ -403,24 +403,20 @@ static void hci_rx_cb(uint8_t packetType, uint8_t *data, uint16_t len)
 
 static int bt_nxp_send(const struct device *dev, struct net_buf *buf)
 {
-	uint8_t packetType;
-
 	ARG_UNUSED(dev);
 
-	switch (bt_buf_get_type(buf)) {
-	case BT_BUF_CMD:
-		packetType = BT_HCI_H4_CMD;
-		break;
-	case BT_BUF_ACL_OUT:
-		packetType = BT_HCI_H4_ACL;
-		break;
-	default:
-		LOG_ERR("Not supported type");
-		return -1;
-	}
-
-	net_buf_push_u8(buf, packetType);
+#if defined(HCI_NXP_LOCK_STANDBY_BEFORE_SEND)
+	/* Sending an HCI message requires to wake up the controller core if it's asleep.
+	 * Platform controllers may send reponses using non wakeable interrupts which can
+	 * be lost during standby usage.
+	 * Blocking standby usage until the HCI message is sent.
+	 */
+	pm_policy_state_lock_get(PM_STATE_STANDBY, PM_ALL_SUBSTATES);
+#endif
 	PLATFORM_SendHciMessage(buf->data, buf->len);
+#if defined(HCI_NXP_LOCK_STANDBY_BEFORE_SEND)
+	pm_policy_state_lock_put(PM_STATE_STANDBY, PM_ALL_SUBSTATES);
+#endif
 
 	net_buf_unref(buf);
 
@@ -514,25 +510,13 @@ static int bt_nxp_close(const struct device *dev)
 {
 	struct bt_nxp_data *hci = dev->data;
 	int ret = 0;
-	/* Reset the Controller */
-	if (IS_ENABLED(CONFIG_BT_HCI_HOST)) {
-		ret = bt_hci_cmd_send_sync(BT_HCI_OP_RESET, NULL, NULL);
-		if (ret) {
-			LOG_ERR("Failed to reset BLE controller");
-		}
-		k_sleep(K_SECONDS(1));
 
-		ret = PLATFORM_TerminateBle();
-		if (ret < 0) {
-			LOG_ERR("Failed to shutdown BLE controller");
-		}
-	}
 	hci->recv = NULL;
 
 	return ret;
 }
 
-static const struct bt_hci_driver_api drv = {
+static DEVICE_API(bt_hci, drv) = {
 	.open = bt_nxp_open,
 	.setup = bt_nxp_setup,
 	.close = bt_nxp_close,
@@ -545,18 +529,6 @@ static int bt_nxp_init(const struct device *dev)
 	int ret = 0;
 
 	ARG_UNUSED(dev);
-
-	/* HCI Interrupt */
-	IRQ_CONNECT(HCI_IRQ_N, HCI_IRQ_P, ble_hci_handler, 0, 0);
-	irq_enable(HCI_IRQ_N);
-#if DT_INST_IRQ_HAS_NAME(0, wakeup_int)
-	/* Wake up done interrupt */
-	IRQ_CONNECT(HCI_WAKEUP_IRQ_N, HCI_WAKEUP_IRQ_P, ble_wakeup_done_handler, 0, 0);
-	irq_enable(HCI_WAKEUP_IRQ_N);
-#endif
-#if (DT_INST_PROP(0, wakeup_source)) && CONFIG_PM
-	EnableDeepSleepIRQ(HCI_IRQ_N);
-#endif
 
 	do {
 		status = PLATFORM_InitBle();

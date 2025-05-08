@@ -51,7 +51,7 @@ static const struct device *const devices[] = {
 #undef DT_DRV_COMPAT
 #undef STM32_COUNTER_DEV
 #endif
-#ifdef CONFIG_COUNTER_NATIVE_POSIX
+#ifdef CONFIG_COUNTER_NATIVE_SIM
 	DEVICE_DT_GET(DT_NODELABEL(counter0)),
 #endif
 #ifdef CONFIG_COUNTER_INFINEON_CAT1
@@ -73,7 +73,7 @@ static const struct device *const devices[] = {
 	DEVS_FOR_DT_COMPAT(nxp_lpc_ctimer)
 #endif
 #ifdef CONFIG_COUNTER_MCUX_RTC
-	DEVS_FOR_DT_COMPAT(nxp_kinetis_rtc)
+	DEVS_FOR_DT_COMPAT(nxp_rtc)
 #endif
 #ifdef CONFIG_COUNTER_MCUX_QTMR
 	DEVS_FOR_DT_COMPAT(nxp_imx_tmr)
@@ -126,11 +126,20 @@ static const struct device *const devices[] = {
 #ifdef CONFIG_COUNTER_MCUX_LPTMR
 	DEVS_FOR_DT_COMPAT(nxp_lptmr)
 #endif
+#ifdef CONFIG_COUNTER_RENESAS_RZ_GTM
+	DEVS_FOR_DT_COMPAT(renesas_rz_gtm_counter)
+#endif
+#ifdef CONFIG_COUNTER_ITE_IT8XXX2
+	DEVS_FOR_DT_COMPAT(ite_it8xxx2_counter)
+#endif
+#ifdef CONFIG_COUNTER_NEORV32_GPTMR
+	DEVS_FOR_DT_COMPAT(neorv32_gptmr)
+#endif
 };
 
 static const struct device *const period_devs[] = {
 #ifdef CONFIG_COUNTER_MCUX_RTC
-	DEVS_FOR_DT_COMPAT(nxp_kinetis_rtc)
+	DEVS_FOR_DT_COMPAT(nxp_rtc)
 #endif
 #ifdef CONFIG_COUNTER_MCUX_LPC_RTC
 	DEVS_FOR_DT_COMPAT(nxp_lpc_rtc)
@@ -725,16 +734,16 @@ static void test_valid_function_without_alarm(const struct device *dev)
 	ticks_tol = ticks_expected / 10;
 	ticks_tol = ticks_tol < 2 ? 2 : ticks_tol;
 
-	if (!counter_is_counting_up(dev)) {
-		ticks_expected = counter_get_top_value(dev) - ticks_expected;
-	}
-
 	err = counter_start(dev);
 	zassert_equal(0, err, "%s: counter failed to start", dev->name);
 
 	/* counter might not start from 0, use current value as offset */
 	counter_get_value(dev, &tick_current);
-	ticks_expected += tick_current;
+	if (counter_is_counting_up(dev)) {
+		ticks_expected += tick_current;
+	} else {
+		ticks_expected = tick_current - ticks_expected;
+	}
 
 	k_busy_wait(wait_for_us);
 
@@ -879,7 +888,7 @@ static bool late_detection_capable(const struct device *dev)
 	int err = counter_set_guard_period(dev, guard,
 					COUNTER_GUARD_PERIOD_LATE_TO_SET);
 
-	if (err == -ENOTSUP) {
+	if (err == -ENOSYS) {
 		return false;
 	}
 
@@ -1083,7 +1092,7 @@ static bool reliable_cancel_capable(const struct device *dev)
 		return true;
 	}
 #endif
-#ifdef CONFIG_COUNTER_NATIVE_POSIX
+#ifdef CONFIG_COUNTER_NATIVE_SIM
 	if (dev == DEVICE_DT_GET(DT_NODELABEL(counter0))) {
 		return true;
 	}
@@ -1099,6 +1108,11 @@ static bool reliable_cancel_capable(const struct device *dev)
 	}
 #endif
 #ifdef CONFIG_COUNTER_MCUX_RTC
+	if (single_channel_alarm_capable(dev)) {
+		return true;
+	}
+#endif
+#ifdef CONFIG_COUNTER_RENESAS_RZ_GTM
 	if (single_channel_alarm_capable(dev)) {
 		return true;
 	}

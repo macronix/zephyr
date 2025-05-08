@@ -630,7 +630,7 @@ static int scd4x_channel_get(const struct device *dev, enum sensor_channel chan,
 			     struct sensor_value *val)
 {
 	const struct scd4x_data *data = dev->data;
-	int32_t tmp_val;
+	int64_t tmp_val;
 
 	switch ((enum sensor_channel)chan) {
 	case SENSOR_CHAN_AMBIENT_TEMP:
@@ -881,7 +881,7 @@ static int scd4x_init(const struct device *dev)
 	return 0;
 }
 
-static const struct sensor_driver_api scd4x_api_funcs = {
+static DEVICE_API(sensor, scd4x_api_funcs) = {
 	.sample_fetch = scd4x_sample_fetch,
 	.channel_get = scd4x_channel_get,
 	.attr_set = scd4x_attr_set,
@@ -889,14 +889,14 @@ static const struct sensor_driver_api scd4x_api_funcs = {
 };
 
 #define SCD4X_INIT(inst, scd4x_model)                                                              \
-	static struct scd4x_data scd4x_data_##inst;                                                \
-	static const struct scd4x_config scd4x_config_##inst = {                                   \
+	static struct scd4x_data scd4x_data_##scd4x_model##_##inst;                                \
+	static const struct scd4x_config scd4x_config_##scd4x_model##_##inst = {                   \
 		.bus = I2C_DT_SPEC_INST_GET(inst),                                                 \
 		.model = scd4x_model,                                                              \
 		.mode = DT_INST_ENUM_IDX_OR(inst, mode, SCD4X_MODE_NORMAL),                        \
 	};                                                                                         \
-	SENSOR_DEVICE_DT_INST_DEFINE(inst, scd4x_init, NULL, &scd4x_data_##inst,                   \
-				     &scd4x_config_##inst, POST_KERNEL,                            \
+	SENSOR_DEVICE_DT_INST_DEFINE(inst, scd4x_init, NULL, &scd4x_data_##scd4x_model##_##inst,   \
+				     &scd4x_config_##scd4x_model##_##inst, POST_KERNEL,            \
 				     CONFIG_SENSOR_INIT_PRIORITY, &scd4x_api_funcs);
 
 #define DT_DRV_COMPAT sensirion_scd40

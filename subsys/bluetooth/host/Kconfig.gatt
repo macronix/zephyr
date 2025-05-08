@@ -115,11 +115,11 @@ config BT_GATT_CACHING
 	bool "GATT Caching support"
 	default y
 	depends on BT_GATT_SERVICE_CHANGED
-	select TINYCRYPT if !BT_USE_PSA_API
-	select TINYCRYPT_AES if !BT_USE_PSA_API
-	select TINYCRYPT_AES_CMAC if !BT_USE_PSA_API
-	select PSA_WANT_KEY_TYPE_AES if BT_USE_PSA_API
-	select PSA_WANT_ALG_CMAC if BT_USE_PSA_API
+	depends on PSA_CRYPTO_CLIENT
+	select PSA_WANT_KEY_TYPE_AES
+	select PSA_WANT_ALG_CMAC
+	select PSA_WANT_ALG_ECB_NO_PADDING
+	imply MBEDTLS_AES_ROM_TABLES if MBEDTLS_PSA_CRYPTO_C
 	help
 	  This option enables support for GATT Caching. When enabled the stack
 	  will register Client Supported Features and Database Hash
@@ -272,7 +272,7 @@ choice BT_DEVICE_NAME_GATT_WRITABLE_SECURITY
 	prompt "Security requirements"
 	default DEVICE_NAME_GATT_WRITABLE_ENCRYPT
 	help
-	  Select security requirementsf for writing device name by remote GATT
+	  Select security requirements for writing device name by remote GATT
 	  clients.
 
 config DEVICE_NAME_GATT_WRITABLE_NONE
@@ -300,7 +300,7 @@ choice BT_DEVICE_APPEARANCE_GATT_WRITABLE
 	prompt "Security requirements"
 	default DEVICE_APPEARANCE_GATT_WRITABLE_AUTHEN
 	help
-	  Select security requirementsf for writing device name by remote GATT
+	  Select security requirements for writing device name by remote GATT
 	  clients.
 
 config BT_DEVICE_APPEARANCE_GATT_WRITABLE_NONE

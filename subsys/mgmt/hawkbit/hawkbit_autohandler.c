@@ -40,17 +40,13 @@ static void autohandler(struct k_work *work)
 		LOG_INF("No update found");
 		break;
 
-	case HAWKBIT_CANCEL_UPDATE:
-		LOG_INF("hawkBit update cancelled from server");
-		break;
-
-	case HAWKBIT_OK:
-		LOG_INF("Image is already updated");
-		break;
-
 	case HAWKBIT_UPDATE_INSTALLED:
 		LOG_INF("Update installed");
 		hawkbit_reboot();
+		break;
+
+	case HAWKBIT_ALLOC_ERROR:
+		LOG_INF("Memory allocation error");
 		break;
 
 	case HAWKBIT_DOWNLOAD_ERROR:
@@ -119,6 +115,8 @@ int hawkbit_autohandler_set_delay(k_timeout_t timeout, bool if_bigger)
 
 void hawkbit_autohandler(bool auto_reschedule)
 {
+	k_event_clear(&hawkbit_autohandler_event, UINT32_MAX);
+
 	if (auto_reschedule) {
 		k_work_reschedule(&hawkbit_work_handle, K_NO_WAIT);
 	} else {

@@ -23,30 +23,6 @@ config NET_SOCKETS_PRIORITY_DEFAULT
 	  allows to for instance prioritize offloaded socket processing during
 	  socket creation over the native one, or vice versa.
 
-config NET_SOCKETS_POSIX_NAMES
-	bool "[DEPRECATED] POSIX names for Sockets API (without full POSIX API)"
-	depends on !POSIX_API
-	select DEPRECATED
-	help
-	  This option is marked as deprecated in favor of using normal
-	  POSIX socket API includes found under the include/zephyr/posix
-	  directory. If you want to use BSD socket API calls, you need
-	  to select POSIX_API and use the socket headers in POSIX subsystem.
-
-	  With this option, Socket API functions are available under the
-	  standard POSIX names like socket(), recv(), and close(), etc.,
-	  even if full POSIX API (CONFIG_POSIX_API) is not enabled. (Note
-	  that close() may require a special attention, as in POSIX it
-	  closes any file descriptor, while with this option enabled, it
-	  will apply only to sockets.)
-
-	  Various networking libraries require either
-	  CONFIG_NET_SOCKETS_POSIX_NAMES or CONFIG_POSIX_API to be set.
-	  If both are disabled, Zephyr's socket functions will be
-	  available (only) with ``zsock_`` prefix, (e.g. `zsock_socket`).
-	  This is useful only in peculiar cases, e.g. when integrating
-	  with 3rd-party socket libraries.
-
 config NET_SOCKETS_POLL_MAX
 	int "Max number of supported poll() entries [DEPRECATED]"
 	default 0
@@ -330,6 +306,13 @@ config NET_SOCKETS_PACKET_DGRAM
 	  on the information in the sockaddr_ll destination address before
 	  they are queued.
 
+config NET_SOCKETS_INET_RAW
+	bool "AF_INET/AF_INET6 and SOCK_RAW sockets support"
+	depends on NET_NATIVE_IP
+	help
+	  Support SOCK_RAW socket type for AF_INET/AF_INET6 sockets. This allows
+	  to receive raw IP datagrams before further processing takes place.
+
 config NET_SOCKETS_CAN
 	bool "Socket CAN support [EXPERIMENTAL]"
 	select NET_L2_CANBUS_RAW
@@ -348,7 +331,6 @@ config NET_SOCKETS_CAN_RECEIVERS
 
 config NET_SOCKETPAIR
 	bool "Support for socketpair"
-	select PIPES
 	help
 	  Communicate over a pair of connected, unnamed UNIX domain sockets.
 
@@ -356,15 +338,15 @@ if NET_SOCKETPAIR
 
 config NET_SOCKETPAIR_BUFFER_SIZE
 	int "Size of the intermediate buffer, in bytes"
-	default 4096 if WIFI_NM_WPA_SUPPLICANT
+	default 1024 if WIFI_NM_WPA_SUPPLICANT
 	default 64
 	range 1 4096
 	help
 	  Buffer size for socketpair(2)
 
-choice
+choice NET_SOCKETPAIR_ALLOCATION_STRATEGY
 	prompt "Memory management for socketpair"
-	default NET_SOCKETPAIR_HEAP if HEAP_MEM_POOL_SIZE != 0
+	default NET_SOCKETPAIR_HEAP if KERNEL_MEM_POOL
 
 config NET_SOCKETPAIR_STATIC
 	bool "Pre-allocate memory statically"
@@ -378,7 +360,8 @@ if NET_SOCKETPAIR_STATIC
 
 config NET_SOCKETPAIR_MAX
 	int "How many socketpairs to pre-allocate"
-	default 6 if WIFI_NM_WPA_SUPPLICANT
+	default 6 if WIFI_NM_HOSTAPD_AP
+	default 4 if WIFI_NM_WPA_SUPPLICANT
 	default 1
 
 endif # NET_SOCKETPAIR_STATIC
@@ -387,8 +370,9 @@ if NET_SOCKETPAIR_HEAP
 
 config HEAP_MEM_POOL_ADD_SIZE_SOCKETPAIR
 	int
-	default 32000 if WIFI_NM_WPA_SUPPLICANT
-	default 256
+	default 9136 if WIFI_NM_HOSTAPD_AP
+	default 6852 if WIFI_NM_WPA_SUPPLICANT
+	default 296
 
 endif # NET_SOCKETPAIR_HEAP
 

@@ -9,22 +9,26 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <errno.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <zephyr/kernel.h>
-#include <zephyr/shell/shell.h>
-#include <zephyr/sys/byteorder.h>
-#include <zephyr/sys/util.h>
+#include <string.h>
 
 #include <zephyr/bluetooth/hci.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
+#include <zephyr/bluetooth/hci_types.h>
 #include <zephyr/bluetooth/iso.h>
 #include <zephyr/bluetooth/cs.h>
-#include <errno.h>
+#include <zephyr/kernel.h>
+#include <zephyr/shell/shell.h>
+#include <zephyr/shell/shell_string_conv.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/sys/util.h>
 
-#include "bt.h"
+#include "common/bt_shell_private.h"
+#include "host/shell/bt.h"
 
 static int check_cs_sync_antenna_selection_input(uint16_t input)
 {
@@ -136,23 +140,24 @@ static int cmd_read_remote_fae_table(const struct shell *sh, size_t argc, char *
 	return 0;
 }
 
+#if defined(CONFIG_BT_CHANNEL_SOUNDING_TEST)
 static bool process_step_data(struct bt_le_cs_subevent_step *step, void *user_data)
 {
-	shell_print(ctx_shell, "Subevent results contained step data: ");
-	shell_print(ctx_shell, "- Step mode %d\n"
+	bt_shell_print("Subevent results contained step data: ");
+	bt_shell_print("- Step mode %d\n"
 		"- Step channel %d\n"
 		"- Step data hexdump:",
 		step->mode,
 		step->channel);
-	shell_hexdump(ctx_shell, step->data, step->data_len);
+	bt_shell_hexdump(step->data, step->data_len);
 
 	return true;
 }
 
 static void cs_test_subevent_data_cb(struct bt_conn_le_cs_subevent_result *result)
 {
-	shell_print(ctx_shell, "Received subevent results.");
-	shell_print(ctx_shell, "Subevent Header:\n"
+	bt_shell_print("Received subevent results.");
+	bt_shell_print("Subevent Header:\n"
 		"- Procedure Counter: %d\n"
 		"- Frequency Compensation: 0x%04x\n"
 		"- Reference Power Level: %d\n"
@@ -179,7 +184,7 @@ static void cs_test_subevent_data_cb(struct bt_conn_le_cs_subevent_result *resul
 
 static void cs_test_end_complete_cb(void)
 {
-	shell_print(ctx_shell, "CS Test End Complete.");
+	bt_shell_print("CS Test End Complete.");
 }
 
 static int cmd_cs_test_simple(const struct shell *sh, size_t argc, char *argv[])
@@ -219,9 +224,9 @@ static int cmd_cs_test_simple(const struct shell *sh, size_t argc, char *argv[])
 	params.t_fcs_time = 120;
 	params.t_pm_time = 20;
 	params.t_sw_time = 0;
-	params.tone_antenna_config_selection = BT_LE_CS_TONE_ANTENNA_CONFIGURATION_INDEX_ONE;
-	params.initiator_snr_control = BT_LE_CS_INITIATOR_SNR_CONTROL_NOT_USED;
-	params.reflector_snr_control = BT_LE_CS_REFLECTOR_SNR_CONTROL_NOT_USED;
+	params.tone_antenna_config_selection = BT_LE_CS_TONE_ANTENNA_CONFIGURATION_A1_B1;
+	params.initiator_snr_control = BT_LE_CS_SNR_CONTROL_NOT_USED;
+	params.reflector_snr_control = BT_LE_CS_SNR_CONTROL_NOT_USED;
 	params.drbg_nonce = 0x1234;
 	params.override_config = 0;
 	params.override_config_0.channel_map_repetition = 1;
@@ -253,6 +258,7 @@ static int cmd_cs_test_simple(const struct shell *sh, size_t argc, char *argv[])
 
 	return 0;
 }
+#endif /* CONFIG_BT_CHANNEL_SOUNDING_TEST */
 
 static int cmd_remove_config(const struct shell *sh, size_t argc, char *argv[])
 {
@@ -429,6 +435,7 @@ static int cmd_create_config(const struct shell *sh, size_t argc, char *argv[])
 	return 0;
 }
 
+#if defined(CONFIG_BT_CHANNEL_SOUNDING_TEST)
 static int cmd_cs_stop_test(const struct shell *sh, size_t argc, char *argv[])
 {
 	int err = 0;
@@ -441,6 +448,7 @@ static int cmd_cs_stop_test(const struct shell *sh, size_t argc, char *argv[])
 
 	return 0;
 }
+#endif /* CONFIG_BT_CHANNEL_SOUNDING_TEST */
 
 static int cmd_read_local_supported_capabilities(const struct shell *sh, size_t argc, char *argv[])
 {
@@ -637,12 +645,12 @@ static int cmd_set_procedure_parameters(const struct shell *sh, size_t argc, cha
 	params.max_procedure_count = 1;
 	params.min_subevent_len = 5000;
 	params.max_subevent_len = 4000000;
-	params.tone_antenna_config_selection = BT_LE_CS_TONE_ANTENNA_CONFIGURATION_INDEX_ONE;
+	params.tone_antenna_config_selection = BT_LE_CS_TONE_ANTENNA_CONFIGURATION_A1_B1;
 	params.phy = 0x01;
 	params.tx_power_delta = 0x80;
 	params.preferred_peer_antenna = 1;
-	params.snr_control_initiator = BT_LE_CS_INITIATOR_SNR_CONTROL_18dB;
-	params.snr_control_reflector = BT_HCI_OP_LE_CS_REFLECTOR_SNR_18;
+	params.snr_control_initiator = BT_LE_CS_SNR_CONTROL_18dB;
+	params.snr_control_reflector = BT_LE_CS_SNR_CONTROL_18dB;
 
 	err = bt_le_cs_set_procedure_parameters(default_conn, &params);
 
@@ -701,9 +709,11 @@ SHELL_STATIC_SUBCMD_SET_CREATE(
 		" <CS_SYNC antenna selection: 0x01 - 0x04, 0xFE, 0xFF> <Max TX power: -127 - 20>",
 		cmd_set_default_settings, 5, 0),
 	SHELL_CMD_ARG(read_remote_fae_table, NULL, "<None>", cmd_read_remote_fae_table, 1, 0),
+#if defined(CONFIG_BT_CHANNEL_SOUNDING_TEST)
 	SHELL_CMD_ARG(start_simple_cs_test, NULL, "<Role selection (initiator, reflector): 0, 1>",
 		      cmd_cs_test_simple, 2, 0),
 	SHELL_CMD_ARG(stop_cs_test, NULL, "<None>", cmd_cs_stop_test, 1, 0),
+#endif /* CONFIG_BT_CHANNEL_SOUNDING_TEST */
 	SHELL_CMD_ARG(
 		create_config, NULL,
 		"<id> <context: local-only, local-remote> <role: initiator, reflector> "

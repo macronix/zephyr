@@ -28,7 +28,7 @@
 	};
 
 	chosen {
-		zephyr,sram = &sram0;
+		zephyr,sram = &sram1;
 		zephyr,console = &uart0;
 		zephyr,shell-uart = &uart0;
 		zephyr,flash = &flash0;
@@ -74,6 +74,12 @@
 			rotation = <0>;
 		};
 	};
+
+	bus_5v: bus_5v {
+		compatible = "regulator-fixed";
+		regulator-name = "bus_5v";
+		enable-gpios = <&axp192_gpio 5 GPIO_ACTIVE_HIGH>;
+	};
 };
 
 &flash0 {
@@ -81,8 +87,7 @@
 };
 
 &psram0 {
-	reg = <0x3f800000 DT_SIZE_M(8)>;
-	status = "disabled";
+	size = <DT_SIZE_M(8)>;
 };
 
 &uart0 {
@@ -182,16 +187,10 @@
 		};
 	};
 
-	bus_5v: bus_5v {
-		compatible = "regulator-fixed";
-		regulator-name = "bus_5v";
-		enable-gpios = <&axp192_gpio 5 GPIO_ACTIVE_HIGH>;
-	};
-
 	ft5336_touch: ft5336@38 {
 		compatible = "focaltech,ft5336";
 		reg = <0x38>;
-		int-gpios = <&gpio1 7 0>;
+		int-gpios = <&gpio1 7 GPIO_ACTIVE_LOW>;
 	};
 };
 
@@ -251,5 +250,9 @@
 };
 
 &esp32_bt_hci {
+	status = "okay";
+};
+
+&wifi {
 	status = "okay";
 };

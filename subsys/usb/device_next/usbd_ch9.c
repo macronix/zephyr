@@ -426,6 +426,8 @@ static int sreq_get_status(struct usbd_context *const uds_ctx,
 
 		response = uds_ctx->status.rwup ?
 			   USB_GET_STATUS_REMOTE_WAKEUP : 0;
+		response |= uds_ctx->status.self_powered ?
+			    USB_GET_STATUS_SELF_POWERED : 0;
 		break;
 	case USB_REQTYPE_RECIPIENT_ENDPOINT:
 		response = usbd_ep_is_halted(uds_ctx, ep) ? BIT(0) : 0;
@@ -470,9 +472,11 @@ static int sreq_get_desc_cfg(struct usbd_context *const uds_ctx,
 
 	/*
 	 * If the other-speed-configuration-descriptor is requested and the
-	 * controller does not support high speed, respond with an error.
+	 * controller (or stack) does not support high speed, respond with
+	 * an error.
 	 */
-	if (other_cfg && usbd_caps_speed(uds_ctx) != USBD_SPEED_HS) {
+	if (other_cfg && !(USBD_SUPPORTS_HIGH_SPEED &&
+	    (usbd_caps_speed(uds_ctx) == USBD_SPEED_HS))) {
 		errno = -ENOTSUP;
 		return 0;
 	}
@@ -689,7 +693,8 @@ static int sreq_get_dev_qualifier(struct usbd_context *const uds_ctx,
 	 * If the Device Qualifier descriptor is requested and the controller
 	 * does not support high speed, respond with an error.
 	 */
-	if (usbd_caps_speed(uds_ctx) != USBD_SPEED_HS) {
+	if (!USBD_SUPPORTS_HIGH_SPEED ||
+	    usbd_caps_speed(uds_ctx) != USBD_SPEED_HS) {
 		errno = -ENOTSUP;
 		return 0;
 	}
@@ -858,7 +863,13 @@ static int sreq_get_interface(struct usbd_context *const uds_ctx,
 		return 0;
 	}
 
+	/* Treat as error in default (not specified) and addressed states. */
 	cfg_nd = usbd_config_get_current(uds_ctx);
+	if (cfg_nd == NULL) {
+		errno = -EPERM;
+		return 0;
+	}
+
 	cfg_desc = cfg_nd->desc;
 
 	if (setup->wIndex > UINT8_MAX ||
@@ -931,13 +942,13 @@ static int vendor_device_request(struct usbd_context *const uds_ctx,
 	}
 
 	if (reqtype_is_to_device(setup) && vreq_nd->to_dev != NULL) {
-		LOG_ERR("Vendor request 0x%02x to device", setup->bRequest);
+		LOG_DBG("Vendor request 0x%02x to device", setup->bRequest);
 		errno = vreq_nd->to_dev(uds_ctx, setup, buf);
 		return 0;
 	}
 
 	if (reqtype_is_to_host(setup) && vreq_nd->to_host != NULL) {
-		LOG_ERR("Vendor request 0x%02x to host", setup->bRequest);
+		LOG_DBG("Vendor request 0x%02x to host", setup->bRequest);
 		errno = vreq_nd->to_host(uds_ctx, setup, buf);
 		return 0;
 	}

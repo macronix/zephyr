@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023 Nordic Semiconductor ASA
+ * Copyright (c) 2022-2025 Nordic Semiconductor ASA
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -24,6 +24,7 @@
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/hci_types.h>
 #include <zephyr/bluetooth/iso.h>
+#include <zephyr/bluetooth/uuid.h>
 #include <zephyr/kernel.h>
 #include <zephyr/net_buf.h>
 #include <zephyr/sys/atomic.h>
@@ -33,6 +34,8 @@
 #include <zephyr/sys/util_macro.h>
 #include <zephyr/sys_clock.h>
 
+#include "bap_stream_tx.h"
+#include "bap_stream_rx.h"
 #include "bstests.h"
 #include "common.h"
 #include "bap_common.h"
@@ -66,8 +69,9 @@ extern enum bst_result_t bst_result;
 static struct bt_bap_lc3_preset unicast_preset_16_2_1 = BT_BAP_LC3_UNICAST_PRESET_16_2_1(
 	BT_AUDIO_LOCATION_FRONT_LEFT, BT_AUDIO_CONTEXT_TYPE_UNSPECIFIED);
 
-static struct bt_cap_stream unicast_client_sink_streams[CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SNK_COUNT];
-static struct bt_cap_stream
+static struct audio_test_stream
+	unicast_client_sink_streams[CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SNK_COUNT];
+static struct audio_test_stream
 	unicast_client_source_streams[CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SRC_COUNT];
 static struct bt_bap_ep
 	*unicast_sink_eps[CONFIG_BT_MAX_CONN][CONFIG_BT_BAP_UNICAST_CLIENT_ASE_SNK_COUNT];
@@ -162,7 +166,25 @@ static void unicast_stream_enabled(struct bt_bap_stream *stream)
 
 static void unicast_stream_started(struct bt_bap_stream *stream)
 {
+	struct audio_test_stream *test_stream = audio_test_stream_from_bap_stream(stream);
+
+	memset(&test_stream->last_info, 0, sizeof(test_stream->last_info));
+	test_stream->rx_cnt = 0U;
+	test_stream->valid_rx_cnt = 0U;
+	test_stream->seq_num = 0U;
+	test_stream->tx_cnt = 0U;
+
 	printk("Started stream %p\n", stream);
+
+	if (bap_stream_tx_can_send(stream)) {
+		int err;
+
+		err = bap_stream_tx_register(stream);
+		if (err != 0) {
+			FAIL("Failed to register stream %p for TX: %d\n", stream, err);
+			return;
+		}
+	}
 }
 
 static void unicast_stream_metadata_updated(struct bt_bap_stream *stream)
@@ -178,6 +200,16 @@ static void unicast_stream_disabled(struct bt_bap_stream *stream)
 static void unicast_stream_stopped(struct bt_bap_stream *stream, uint8_t reason)
 {
 	printk("Stopped stream %p with reason 0x%02X\n", stream, reason);
+
+	if (bap_stream_tx_can_send(stream)) {
+		int err;
+
+		err = bap_stream_tx_unregister(stream);
+		if (err != 0) {
+			FAIL("Failed to unregister stream %p for TX: %d\n", stream, err);
+			return;
+		}
+	}
 }
 
 static void unicast_stream_released(struct bt_bap_stream *stream)
@@ -206,6 +238,8 @@ static struct bt_bap_stream_ops unicast_stream_ops = {
 	.disabled = unicast_stream_disabled,
 	.stopped = unicast_stream_stopped,
 	.released = unicast_stream_released,
+	.sent = bap_stream_tx_sent_cb,
+	.recv = bap_stream_rx_recv_cb,
 };
 
 static void cap_discovery_complete_cb(struct bt_conn *conn, int err,
@@ -367,8 +401,73 @@ static struct bt_gatt_cb gatt_callbacks = {
 	.att_mtu_updated = att_mtu_updated,
 };
 
+static bool check_audio_support_and_connect_cb(struct bt_data *data, void *user_data)
+{
+	char addr_str[BT_ADDR_LE_STR_LEN];
+	bt_addr_le_t *addr = user_data;
+	const struct bt_uuid *uuid;
+	uint16_t uuid_val;
+	int err;
+
+	printk("data->type %u\n", data->type);
+
+	if (data->type != BT_DATA_SVC_DATA16) {
+		return true; /* Continue parsing to next AD data type */
+	}
+
+	if (data->data_len < sizeof(uuid_val)) {
+		return true; /* Continue parsing to next AD data type */
+	}
+
+	/* We are looking for the CAS service data */
+	uuid_val = sys_get_le16(data->data);
+	uuid = BT_UUID_DECLARE_16(uuid_val);
+	if (bt_uuid_cmp(uuid, BT_UUID_CAS) != 0) {
+		return true; /* Continue parsing to next AD data type */
+	}
+
+	bt_addr_le_to_str(addr, addr_str, sizeof(addr_str));
+	printk("Device found: %s\n", addr_str);
+
+	printk("Stopping scan\n");
+	if (bt_le_scan_stop()) {
+		FAIL("Could not stop scan");
+		return false;
+	}
+
+	err = bt_conn_le_create(addr, BT_CONN_LE_CREATE_CONN, BT_BAP_CONN_PARAM_RELAXED,
+				&connected_conns[connected_conn_cnt]);
+	if (err != 0) {
+		FAIL("Could not connect to peer: %d", err);
+	}
+
+	return false; /* Stop parsing */
+}
+
+static void scan_recv_cb(const struct bt_le_scan_recv_info *info, struct net_buf_simple *buf)
+{
+	struct bt_conn *conn;
+
+	conn = bt_conn_lookup_addr_le(BT_ID_DEFAULT, info->addr);
+	if (conn != NULL) {
+		/* Already connected to this device */
+		bt_conn_unref(conn);
+		return;
+	}
+
+	/* Check for connectable, extended advertising */
+	if (((info->adv_props & BT_GAP_ADV_PROP_EXT_ADV) != 0) &&
+	    ((info->adv_props & BT_GAP_ADV_PROP_CONNECTABLE)) != 0) {
+		/* Check for TMAS support in advertising data */
+		bt_data_parse(buf, check_audio_support_and_connect_cb, (void *)info->addr);
+	}
+}
+
 static void init(void)
 {
+	static struct bt_le_scan_cb scan_callbacks = {
+		.recv = scan_recv_cb,
+	};
 	int err;
 
 	err = bt_enable(NULL);
@@ -377,7 +476,15 @@ static void init(void)
 		return;
 	}
 
+	printk("Bluetooth initialized\n");
+	bap_stream_tx_init();
+
 	bt_gatt_cb_register(&gatt_callbacks);
+	err = bt_le_scan_cb_register(&scan_callbacks);
+	if (err != 0) {
+		FAIL("Failed to register scan callbacks (err %d)\n", err);
+		return;
+	}
 
 	err = bt_bap_unicast_client_register_cb(&unicast_client_cbs);
 	if (err != 0) {
@@ -392,58 +499,21 @@ static void init(void)
 	}
 
 	for (size_t i = 0; i < ARRAY_SIZE(unicast_client_sink_streams); i++) {
-		bt_cap_stream_ops_register(&unicast_client_sink_streams[i], &unicast_stream_ops);
+		bt_cap_stream_ops_register(
+			cap_stream_from_audio_test_stream(&unicast_client_sink_streams[i]),
+			&unicast_stream_ops);
 	}
 
 	for (size_t i = 0; i < ARRAY_SIZE(unicast_client_source_streams); i++) {
-		bt_cap_stream_ops_register(&unicast_client_source_streams[i], &unicast_stream_ops);
+		bt_cap_stream_ops_register(
+			cap_stream_from_audio_test_stream(&unicast_client_source_streams[i]),
+			&unicast_stream_ops);
 	}
 
 	for (size_t i = 0; i < ARRAY_SIZE(unicast_streams); i++) {
-		bt_cap_stream_ops_register(&unicast_streams[i].stream, &unicast_stream_ops);
-	}
-}
-
-static void cap_device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
-			     struct net_buf_simple *ad)
-{
-	char addr_str[BT_ADDR_LE_STR_LEN];
-	struct bt_conn *conn;
-	int err;
-
-	/* We're only interested in connectable events */
-	if (type != BT_HCI_ADV_IND && type != BT_HCI_ADV_DIRECT_IND) {
-		return;
-	}
-
-	conn = bt_conn_lookup_addr_le(BT_ID_DEFAULT, addr);
-	if (conn != NULL) {
-		/* Already connected to this device */
-		bt_conn_unref(conn);
-		return;
-	}
-
-	bt_addr_le_to_str(addr, addr_str, sizeof(addr_str));
-	printk("Device found: %s (RSSI %d)\n", addr_str, rssi);
-
-	/* connect only to devices in close proximity */
-	if (rssi < -70) {
-		FAIL("RSSI too low");
-		return;
-	}
-
-	printk("Stopping scan\n");
-	if (bt_le_scan_stop()) {
-		FAIL("Could not stop scan");
-		return;
-	}
-
-	err = bt_conn_le_create(addr, BT_CONN_LE_CREATE_CONN,
-				BT_LE_CONN_PARAM(BT_GAP_INIT_CONN_INT_MIN, BT_GAP_INIT_CONN_INT_MIN,
-						 0, BT_GAP_MS_TO_CONN_TIMEOUT(4000)),
-				&connected_conns[connected_conn_cnt]);
-	if (err) {
-		FAIL("Could not connect to peer: %d", err);
+		bt_cap_stream_ops_register(
+			cap_stream_from_audio_test_stream(&unicast_streams[i].stream),
+			&unicast_stream_ops);
 	}
 }
 
@@ -453,7 +523,7 @@ static void scan_and_connect(void)
 
 	UNSET_FLAG(flag_connected);
 
-	err = bt_le_scan_start(BT_LE_SCAN_PASSIVE, cap_device_found);
+	err = bt_le_scan_start(BT_LE_SCAN_PASSIVE, NULL);
 	if (err != 0) {
 		FAIL("Scanning failed to start (err %d)\n", err);
 		return;
@@ -555,9 +625,11 @@ static void unicast_group_create(struct bt_bap_unicast_group **out_unicast_group
 	int err;
 
 	group_sink_stream_params.qos = &unicast_preset_16_2_1.qos;
-	group_sink_stream_params.stream = &unicast_client_sink_streams[0].bap_stream;
+	group_sink_stream_params.stream =
+		bap_stream_from_audio_test_stream(&unicast_client_sink_streams[0]);
 	group_source_stream_params.qos = &unicast_preset_16_2_1.qos;
-	group_source_stream_params.stream = &unicast_client_source_streams[0].bap_stream;
+	group_source_stream_params.stream =
+		bap_stream_from_audio_test_stream(&unicast_client_source_streams[0]);
 	pair_params.tx_param = &group_sink_stream_params;
 	pair_params.rx_param = &group_source_stream_params;
 
@@ -582,12 +654,13 @@ static void unicast_audio_start(struct bt_bap_unicast_group *unicast_group, bool
 	param.count = ARRAY_SIZE(stream_param);
 	param.stream_params = stream_param;
 	stream_param[0].member.member = default_conn;
-	stream_param[0].stream = &unicast_client_sink_streams[0];
+	stream_param[0].stream = cap_stream_from_audio_test_stream(&unicast_client_sink_streams[0]);
 	stream_param[0].ep = unicast_sink_eps[bt_conn_index(default_conn)][0];
 	stream_param[0].codec_cfg = &unicast_preset_16_2_1.codec_cfg;
 
 	stream_param[1].member.member = default_conn;
-	stream_param[1].stream = &unicast_client_source_streams[0];
+	stream_param[1].stream =
+		cap_stream_from_audio_test_stream(&unicast_client_source_streams[0]);
 	stream_param[1].ep = unicast_source_eps[bt_conn_index(default_conn)][0];
 	stream_param[1].codec_cfg = &unicast_preset_16_2_1.codec_cfg;
 
@@ -601,6 +674,8 @@ static void unicast_audio_start(struct bt_bap_unicast_group *unicast_group, bool
 
 	if (wait) {
 		WAIT_FOR_FLAG(flag_started);
+		/* let other devices know we have started what we wanted */
+		backchannel_sync_send_all();
 	}
 }
 
@@ -613,7 +688,8 @@ static void unicast_audio_update_inval(void)
 	struct bt_cap_unicast_audio_update_param param = {0};
 	int err;
 
-	stream_params[0].stream = &unicast_client_sink_streams[0];
+	stream_params[0].stream =
+		cap_stream_from_audio_test_stream(&unicast_client_sink_streams[0]);
 	stream_params[0].meta = unicast_preset_16_2_1.codec_cfg.meta;
 	stream_params[0].meta_len = unicast_preset_16_2_1.codec_cfg.meta_len;
 	param.count = ARRAY_SIZE(stream_params);
@@ -660,11 +736,13 @@ static void unicast_audio_update(void)
 	};
 	int err;
 
-	stream_params[0].stream = &unicast_client_sink_streams[0];
+	stream_params[0].stream =
+		cap_stream_from_audio_test_stream(&unicast_client_sink_streams[0]);
 	stream_params[0].meta = new_meta;
 	stream_params[0].meta_len = ARRAY_SIZE(new_meta);
 
-	stream_params[1].stream = &unicast_client_source_streams[0];
+	stream_params[1].stream =
+		cap_stream_from_audio_test_stream(&unicast_client_source_streams[0]);
 	stream_params[1].meta = new_meta;
 	stream_params[1].meta_len = ARRAY_SIZE(new_meta);
 
@@ -681,7 +759,6 @@ static void unicast_audio_update(void)
 	}
 
 	WAIT_FOR_FLAG(flag_updated);
-	printk("READ LONG META\n");
 }
 
 static void unicast_audio_stop(struct bt_bap_unicast_group *unicast_group)
@@ -796,14 +873,29 @@ static void test_main_cap_initiator_unicast(void)
 
 	for (size_t i = 0U; i < iterations; i++) {
 		printk("\nRunning iteration i=%zu\n\n", i);
+
 		unicast_group_create(&unicast_group);
 
 		for (size_t j = 0U; j < iterations; j++) {
 			printk("\nRunning iteration j=%zu\n\n", i);
 
+			UNSET_FLAG(flag_audio_received);
+
 			unicast_audio_start(unicast_group, true);
 
 			unicast_audio_update();
+
+			printk("Waiting for data\n");
+			WAIT_FOR_FLAG(flag_audio_received);
+
+			/* Due to how the backchannel sync is implemented for LE Audio we cannot
+			 * easily tell the remote (CAP acceptor) how many times to wait for data,
+			 * and thus we only await one sync message from it from the first iteration
+			 */
+			if (i == 0 && j == 0) {
+				/* Wait until acceptors have received expected data */
+				backchannel_sync_wait_all();
+			}
 
 			unicast_audio_stop(unicast_group);
 		}
@@ -837,6 +929,13 @@ static void test_main_cap_initiator_unicast_inval(void)
 
 	unicast_audio_update_inval();
 	unicast_audio_update();
+
+	printk("Waiting for data\n");
+	WAIT_FOR_FLAG(flag_audio_received);
+	printk("Data received\n");
+
+	/* Wait until acceptors have received expected data */
+	backchannel_sync_wait_all();
 
 	unicast_audio_stop(unicast_group);
 
@@ -941,6 +1040,13 @@ static void test_cap_initiator_unicast_ase_error(void)
 	/* Without invalid metadata type, start should pass */
 	unicast_audio_start(unicast_group, true);
 
+	printk("Waiting for data\n");
+	WAIT_FOR_FLAG(flag_audio_received);
+	printk("Data received\n");
+
+	/* Wait until acceptors have received expected data */
+	backchannel_sync_wait_all();
+
 	unicast_audio_stop(unicast_group);
 
 	unicast_group_delete(unicast_group);
@@ -992,11 +1098,13 @@ static int cap_initiator_ac_create_unicast_group(const struct cap_initiator_ac_p
 	 */
 	for (size_t i = 0U; i < snk_cnt; i++) {
 		snk_group_stream_params[i].qos = snk_qos[i];
-		snk_group_stream_params[i].stream = &snk_uni_streams[i]->stream.bap_stream;
+		snk_group_stream_params[i].stream =
+			bap_stream_from_audio_test_stream(&snk_uni_streams[i]->stream);
 	}
 	for (size_t i = 0U; i < src_cnt; i++) {
 		src_group_stream_params[i].qos = src_qos[i];
-		src_group_stream_params[i].stream = &src_uni_streams[i]->stream.bap_stream;
+		src_group_stream_params[i].stream =
+			bap_stream_from_audio_test_stream(&src_uni_streams[i]->stream);
 	}
 
 	for (size_t i = 0U; i < param->conn_cnt; i++) {
@@ -1091,12 +1199,12 @@ static int cap_initiator_ac_cap_unicast_start(const struct cap_initiator_ac_para
 	 * preset so that we can modify them (e.g. update the metadata)
 	 */
 	for (size_t i = 0U; i < snk_cnt; i++) {
-		snk_cap_streams[i] = &snk_uni_streams[i]->stream;
+		snk_cap_streams[i] = cap_stream_from_audio_test_stream(&snk_uni_streams[i]->stream);
 		snk_codec_cfgs[i] = &snk_uni_streams[i]->codec_cfg;
 	}
 
 	for (size_t i = 0U; i < src_cnt; i++) {
-		src_cap_streams[i] = &src_uni_streams[i]->stream;
+		src_cap_streams[i] = cap_stream_from_audio_test_stream(&src_uni_streams[i]->stream);
 		src_codec_cfgs[i] = &src_uni_streams[i]->codec_cfg;
 	}
 
@@ -1261,6 +1369,7 @@ static int cap_initiator_ac_unicast(const struct cap_initiator_ac_param *param,
 	}
 
 	WAIT_FOR_FLAG(flag_started);
+	backchannel_sync_send_all(); /* let other devices know we have started what we wanted */
 
 	return 0;
 }
@@ -1268,6 +1377,8 @@ static int cap_initiator_ac_unicast(const struct cap_initiator_ac_param *param,
 static void test_cap_initiator_ac(const struct cap_initiator_ac_param *param)
 {
 	struct bt_bap_unicast_group *unicast_group;
+	bool expect_tx = false;
+	bool expect_rx = false;
 
 	printk("Running test for %s with Sink Preset %s and Source Preset %s\n", param->name,
 	       param->snk_named_preset != NULL ? param->snk_named_preset->name : "None",
@@ -1307,14 +1418,26 @@ static void test_cap_initiator_ac(const struct cap_initiator_ac_param *param)
 
 		if (param->snk_cnt[i] > 0U) {
 			discover_sink(connected_conns[i]);
+			expect_tx = true;
 		}
 
 		if (param->src_cnt[i] > 0U) {
 			discover_source(connected_conns[i]);
+			expect_rx = true;
 		}
 	}
 
 	cap_initiator_ac_unicast(param, &unicast_group);
+
+	if (expect_tx) {
+		/* Wait until acceptors have received expected data */
+		backchannel_sync_wait_all();
+	}
+
+	if (expect_rx) {
+		printk("Waiting for data\n");
+		WAIT_FOR_FLAG(flag_audio_received);
+	}
 
 	unicast_audio_stop(unicast_group);
 

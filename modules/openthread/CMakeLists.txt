@@ -249,6 +249,17 @@ list(APPEND ot_libs openthread-mtd)
 endif()
 endif()
 
+if(CONFIG_HDLC_RCP_IF)
+list(APPEND ot_libs
+  ot-config
+  openthread-platform
+  openthread-radio-spinel
+  openthread-spinel-ncp
+  openthread-url
+  openthread-hdlc
+)
+endif()
+
 if(CONFIG_OPENTHREAD_SETTINGS_RAM)
   target_compile_options(openthread-platform-utils PRIVATE
     $<TARGET_PROPERTY:zephyr_interface,INTERFACE_COMPILE_OPTIONS>
@@ -261,6 +272,13 @@ endif()
 zephyr_link_libraries(${ot_libs})
 
 endif()
+
+# Create a library for the OpenThread Zephyr utils
+zephyr_library_named(openthread_utils)
+zephyr_library_sources(
+  openthread.c
+)
+zephyr_library_sources_ifdef(CONFIG_OPENTHREAD_SHELL shell.c)
 
 add_subdirectory(platform)
 

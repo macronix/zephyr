@@ -4,8 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#define DT_DRV_COMPAT adi_adxl367
-
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
@@ -17,6 +15,8 @@
 #include <zephyr/logging/log.h>
 
 #include "adxl367.h"
+
+#define DT_DRV_COMPAT adi_adxl367
 
 LOG_MODULE_REGISTER(ADXL367, CONFIG_SENSOR_LOG_LEVEL);
 
@@ -890,7 +890,7 @@ static void adxl367_accel_convert(struct sensor_value *val, int16_t value,
 				enum adxl367_range range)
 #endif /*CONFIG_SENSOR_ASYNC_API*/
 {
-	int64_t micro_ms2 = value * (SENSOR_G * 250 / 10000 *
+	int64_t micro_ms2 = value * (SENSOR_G * 250 / 1000 *
 			  adxl367_scale_mul[range] / 1000);
 
 	val->val1 = micro_ms2 / 1000000;
@@ -903,10 +903,10 @@ void adxl367_temp_convert(struct sensor_value *val, int16_t value)
 static void adxl367_temp_convert(struct sensor_value *val, int16_t value)
 #endif /*CONFIG_SENSOR_ASYNC_API*/
 {
-	int64_t temp_data = (value + ADXL367_TEMP_OFFSET) * ADXL367_TEMP_SCALE;
+	int64_t temp_data = (value - ADXL367_TEMP_25C);
 
-	val->val1 = temp_data / ADXL367_TEMP_SCALE_DIV;
-	val->val2 = temp_data % ADXL367_TEMP_SCALE_DIV;
+	val->val1 = temp_data / 54 /*temp sensitivity LSB/C*/ + 25/*bias test conditions*/;
+	val->val2 = temp_data % 54 * 10000;
 }
 
 static int adxl367_channel_get(const struct device *dev,
@@ -932,6 +932,7 @@ static int adxl367_channel_get(const struct device *dev,
 		break;
 	case SENSOR_CHAN_DIE_TEMP:
 		adxl367_temp_convert(val, data->temp_val);
+		break;
 	default:
 		return -ENOTSUP;
 	}
@@ -939,7 +940,7 @@ static int adxl367_channel_get(const struct device *dev,
 	return 0;
 }
 
-static const struct sensor_driver_api adxl367_api_funcs = {
+static DEVICE_API(sensor, adxl367_api_funcs) = {
 	.attr_set     = adxl367_attr_set,
 	.sample_fetch = adxl367_sample_fetch,
 	.channel_get  = adxl367_channel_get,
@@ -1074,21 +1075,17 @@ static int adxl367_init(const struct device *dev)
 	return adxl367_probe(dev);
 }
 
-#if DT_NUM_INST_STATUS_OKAY(DT_DRV_COMPAT) == 0
-#warning "ADXL367 driver enabled without any devices"
-#endif
-
 /*
  * Device creation macro, shared by ADXL367_DEFINE_SPI() and
  * ADXL367_DEFINE_I2C().
  */
 
-#define ADXL367_DEVICE_INIT(inst)					\
+#define ADXL367_DEVICE_INIT(inst, chipid)					\
 	SENSOR_DEVICE_DT_INST_DEFINE(inst,				\
 			      adxl367_init,				\
 			      NULL,					\
-			      &adxl367_data_##inst,			\
-			      &adxl367_config_##inst,			\
+			      &adxl367_data_##inst##chipid,			\
+			      &adxl367_config_##inst##chipid,			\
 			      POST_KERNEL,				\
 			      CONFIG_SENSOR_INIT_PRIORITY,		\
 			      &adxl367_api_funcs);
@@ -1100,7 +1097,7 @@ static int adxl367_init(const struct device *dev)
 #define ADXL367_CFG_IRQ(inst)
 #endif /* CONFIG_ADXL367_TRIGGER */
 
-#define ADXL367_CONFIG(inst)								\
+#define ADXL367_CONFIG(inst, chipid)							\
 		.odr = DT_INST_PROP(inst, odr),						\
 		.autosleep = false,							\
 		.low_noise = false,							\
@@ -1118,67 +1115,74 @@ static int adxl367_init(const struct device *dev)
 		.inactivity_th.enable =							\
 			IS_ENABLED(CONFIG_ADXL367_INACTIVITY_DETECTION_MODE),		\
 		.inactivity_time = CONFIG_ADXL367_INACTIVITY_TIME,			\
-		.fifo_config.fifo_mode = ADXL367_FIFO_DISABLED,				\
+		.fifo_config.fifo_mode =						\
+		DT_INST_PROP_OR(inst, fifo_mode, ADXL367_FIFO_DISABLED),		\
 		.fifo_config.fifo_format = ADXL367_FIFO_FORMAT_XYZ,			\
 		.fifo_config.fifo_samples = 128,					\
 		.fifo_config.fifo_read_mode = ADXL367_14B_CHID,				\
-		.op_mode = ADXL367_MEASURE,
+		.op_mode = ADXL367_MEASURE,						\
+		.chip_id = chipid,
 
 /*
  * Instantiation macros used when a device is on a SPI bus.
  */
 #define ADXL367_SPI_CFG SPI_WORD_SET(8) | SPI_TRANSFER_MSB
 
-#define ADXL367_RTIO_DEFINE(inst)                                    \
-	SPI_DT_IODEV_DEFINE(adxl367_iodev_##inst, DT_DRV_INST(inst),     \
+#define ADXL367_RTIO_DEFINE(inst, chipid)                                    \
+	SPI_DT_IODEV_DEFINE(adxl367_iodev_##inst##chipid, DT_DRV_INST(inst),     \
 						ADXL367_SPI_CFG, 0U);                        \
-	RTIO_DEFINE(adxl367_rtio_ctx_##inst, 8, 8);
+	RTIO_DEFINE(adxl367_rtio_ctx_##inst##chipid, 8, 8);
 
-#define ADXL367_CONFIG_SPI(inst)					\
+#define ADXL367_CONFIG_SPI(inst, chipid)					\
 	{								\
 		.bus_init = adxl367_spi_init,				\
 		.spi = SPI_DT_SPEC_INST_GET(inst, ADXL367_SPI_CFG, 0),		\
-		ADXL367_CONFIG(inst)					\
+		ADXL367_CONFIG(inst, chipid)					\
 		COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, int1_gpios),	\
 		(ADXL367_CFG_IRQ(inst)), ())				\
 	}
 
-#define ADXL367_DEFINE_SPI(inst)					\
-	IF_ENABLED(CONFIG_ADXL367_STREAM, (ADXL367_RTIO_DEFINE(inst)));                          \
-	static struct adxl367_data adxl367_data_##inst = {			\
-	IF_ENABLED(CONFIG_ADXL367_STREAM, (.rtio_ctx = &adxl367_rtio_ctx_##inst,                  \
-				.iodev = &adxl367_iodev_##inst,)) \
+#define ADXL367_DEFINE_SPI(inst, chipid)					\
+	IF_ENABLED(CONFIG_ADXL367_STREAM, (ADXL367_RTIO_DEFINE(inst, chipid)));                  \
+	static struct adxl367_data adxl367_data_##inst##chipid = {			\
+	IF_ENABLED(CONFIG_ADXL367_STREAM, (.rtio_ctx = &adxl367_rtio_ctx_##inst##chipid,         \
+				.iodev = &adxl367_iodev_##inst##chipid,)) \
 	};	\
-	static const struct adxl367_dev_config adxl367_config_##inst =	\
-		ADXL367_CONFIG_SPI(inst);				\
-	ADXL367_DEVICE_INIT(inst)
+	static const struct adxl367_dev_config adxl367_config_##inst##chipid =	\
+		ADXL367_CONFIG_SPI(inst, chipid);				\
+	ADXL367_DEVICE_INIT(inst, chipid)
 
 /*
  * Instantiation macros used when a device is on an I2C bus.
  */
 
-#define ADXL367_CONFIG_I2C(inst)					\
+#define ADXL367_CONFIG_I2C(inst, chipid)					\
 	{								\
 		.bus_init = adxl367_i2c_init,				\
 		.i2c = I2C_DT_SPEC_INST_GET(inst),			\
-		ADXL367_CONFIG(inst)					\
+		ADXL367_CONFIG(inst, chipid)					\
 		COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, int1_gpios),	\
 		(ADXL367_CFG_IRQ(inst)), ())				\
 	}
 
-#define ADXL367_DEFINE_I2C(inst)					\
-	static struct adxl367_data adxl367_data_##inst;			\
-	static const struct adxl367_dev_config adxl367_config_##inst =	\
-		ADXL367_CONFIG_I2C(inst);				\
-	ADXL367_DEVICE_INIT(inst)
+#define ADXL367_DEFINE_I2C(inst, chipid)					\
+	static struct adxl367_data adxl367_data_##inst##chipid;			\
+	static const struct adxl367_dev_config adxl367_config_##inst##chipid =	\
+		ADXL367_CONFIG_I2C(inst, chipid);				\
+	ADXL367_DEVICE_INIT(inst, chipid)
 /*
  * Main instantiation macro. Use of COND_CODE_1() selects the right
  * bus-specific macro at preprocessor time.
  */
 
-#define ADXL367_DEFINE(inst)						\
+#define ADXL367_DEFINE(inst, chipid)						\
 	COND_CODE_1(DT_INST_ON_BUS(inst, spi),				\
-		    (ADXL367_DEFINE_SPI(inst)),				\
-		    (ADXL367_DEFINE_I2C(inst)))
+		    (ADXL367_DEFINE_SPI(inst, chipid)),				\
+		    (ADXL367_DEFINE_I2C(inst, chipid)))
 
-DT_INST_FOREACH_STATUS_OKAY(ADXL367_DEFINE)
+DT_INST_FOREACH_STATUS_OKAY_VARGS(ADXL367_DEFINE, ADXL367_CHIP_ID)
+
+#undef DT_DRV_COMPAT
+#define DT_DRV_COMPAT adi_adxl366
+DT_INST_FOREACH_STATUS_OKAY_VARGS(ADXL367_DEFINE, ADXL366_CHIP_ID)
+#undef DT_DRV_COMPAT

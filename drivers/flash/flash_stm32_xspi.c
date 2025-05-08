@@ -37,8 +37,8 @@ LOG_MODULE_REGISTER(flash_stm32_xspi, CONFIG_FLASH_LOG_LEVEL);
 		    (_CONCAT(HAL_XSPIM_, DT_STRING_TOKEN(STM32_XSPI_NODE, prop))),	\
 		    ((default_value)))
 
-/* Get the base address of the flash from the DTS node */
-#define STM32_XSPI_BASE_ADDRESS DT_INST_REG_ADDR(0)
+/* Get the base address of the flash from the DTS st,stm32-xspi node */
+#define STM32_XSPI_BASE_ADDRESS DT_REG_ADDR_BY_IDX(STM32_XSPI_NODE, 1)
 
 #define STM32_XSPI_RESET_GPIO DT_INST_NODE_HAS_PROP(0, reset_gpios)
 
@@ -190,7 +190,9 @@ static XSPI_RegularCmdTypeDef xspi_prepare_cmd(const uint8_t transfer_mode,
 		.DQSMode = (transfer_rate == XSPI_DTR_TRANSFER)
 				? HAL_XSPI_DQS_ENABLE
 				: HAL_XSPI_DQS_DISABLE,
+#ifdef XSPI_CCR_SIOO
 		.SIOOMode = HAL_XSPI_SIOO_INST_EVERY_CMD,
+#endif /* XSPI_CCR_SIOO */
 	};
 
 	switch (transfer_mode) {
@@ -741,6 +743,13 @@ static int stm32_xspi_config_mem(const struct device *dev)
 			return -EIO;
 		}
 
+		if (stm32_xspi_read_cfg2reg(&dev_data->hxspi,
+			XSPI_OCTO_MODE, XSPI_DTR_TRANSFER, reg) != 0) {
+			/* Check the configuration has been correctly done on SPI_NOR_REG2_ADDR1 */
+			LOG_ERR("XSPI flash config read failed");
+			return -EIO;
+		}
+
 		LOG_INF("XSPI flash config is OCTO / DTR");
 	}
 
@@ -773,7 +782,9 @@ static int stm32_xspi_mem_reset(const struct device *dev)
 		.DataLength = HAL_XSPI_DATA_NONE,
 		.DummyCycles = 0U,
 		.DQSMode = HAL_XSPI_DQS_DISABLE,
+#ifdef XSPI_CCR_SIOO
 		.SIOOMode = HAL_XSPI_SIOO_INST_EVERY_CMD,
+#endif /* XSPI_CCR_SIOO */
 	};
 
 	/* Reset enable in SPI mode and STR transfer mode */
@@ -842,7 +853,7 @@ static int stm32_xspi_set_memorymap(const struct device *dev)
 	const struct flash_stm32_xspi_config *dev_cfg = dev->config;
 	struct flash_stm32_xspi_data *dev_data = dev->data;
 	XSPI_RegularCmdTypeDef s_command = {0}; /* Non-zero values disturb the command */
-	XSPI_MemoryMappedTypeDef s_MemMappedCfg;
+	XSPI_MemoryMappedTypeDef s_MemMappedCfg = {0};
 
 	/* Configure octoflash in MemoryMapped mode */
 	if ((dev_cfg->data_mode == XSPI_SPI_MODE) &&
@@ -935,6 +946,13 @@ static int stm32_xspi_set_memorymap(const struct device *dev)
 	/* Enable the memory-mapping */
 	s_MemMappedCfg.TimeOutActivation = HAL_XSPI_TIMEOUT_COUNTER_DISABLE;
 
+#ifdef XSPI_CR_NOPREF
+	s_MemMappedCfg.NoPrefetchData = HAL_XSPI_AUTOMATIC_PREFETCH_ENABLE;
+#ifdef XSPI_CR_NOPREF_AXI
+	s_MemMappedCfg.NoPrefetchAXI = HAL_XSPI_AXI_PREFETCH_DISABLE;
+#endif /* XSPI_CR_NOPREF_AXI */
+#endif /* XSPI_CR_NOPREF */
+
 	ret = HAL_XSPI_MemoryMapped(&dev_data->hxspi, &s_MemMappedCfg);
 	if (ret != HAL_OK) {
 		LOG_ERR("%d: Failed to enable memory mapped", ret);
@@ -1021,7 +1039,9 @@ static int flash_stm32_xspi_erase(const struct device *dev, off_t addr,
 		.DataMode = HAL_XSPI_DATA_NONE,
 		.DummyCycles = 0U,
 		.DQSMode = HAL_XSPI_DQS_DISABLE,
+#ifdef XSPI_CCR_SIOO
 		.SIOOMode = HAL_XSPI_SIOO_INST_EVERY_CMD,
+#endif /* XSPI_CCR_SIOO */
 	};
 
 	if (stm32_xspi_mem_ready(dev,
@@ -1539,7 +1559,7 @@ static void flash_stm32_xspi_pages_layout(const struct device *dev,
 }
 #endif
 
-static const struct flash_driver_api flash_stm32_xspi_driver_api = {
+static DEVICE_API(flash, flash_stm32_xspi_driver_api) = {
 	.read = flash_stm32_xspi_read,
 	.write = flash_stm32_xspi_write,
 	.erase = flash_stm32_xspi_erase,
@@ -2019,6 +2039,28 @@ static int flash_stm32_xspi_init(const struct device *dev)
 	uint32_t prescaler = STM32_XSPI_CLOCK_PRESCALER_MIN;
 	int ret;
 
+	if (!device_is_ready(DEVICE_DT_GET(STM32_CLOCK_CONTROL_NODE))) {
+		LOG_ERR("clock control device not ready");
+		return -ENODEV;
+	}
+
+#ifdef CONFIG_STM32_MEMMAP
+	/* If MemoryMapped then configure skip init
+	 * Check clock status first as reading CR register without bus clock doesn't work on N6
+	 * If clock is off, then MemoryMapped is off too and we do init
+	 */
+	if (clock_control_get_status(DEVICE_DT_GET(STM32_CLOCK_CONTROL_NODE),
+				     (clock_control_subsys_t) &dev_cfg->pclken[0])
+				     == CLOCK_CONTROL_STATUS_ON) {
+		if (stm32_xspi_is_memorymap(dev)) {
+			LOG_ERR("NOR init'd in MemMapped mode");
+			/* Force HAL instance in correct state */
+			dev_data->hxspi.State = HAL_XSPI_STATE_BUSY_MEM_MAPPED;
+			return 0;
+		}
+	}
+#endif /* CONFIG_STM32_MEMMAP */
+
 	/* The SPI/DTR is not a valid config of data_mode/data_rate according to the DTS */
 	if ((dev_cfg->data_mode != XSPI_OCTO_MODE)
 		&& (dev_cfg->data_rate == XSPI_DTR_TRANSFER)) {
@@ -2033,21 +2075,6 @@ static int flash_stm32_xspi_init(const struct device *dev)
 		LOG_ERR("XSPI pinctrl setup failed (%d)", ret);
 		return ret;
 	}
-
-	if (!device_is_ready(DEVICE_DT_GET(STM32_CLOCK_CONTROL_NODE))) {
-		LOG_ERR("clock control device not ready");
-		return -ENODEV;
-	}
-
-#ifdef CONFIG_STM32_MEMMAP
-	/* If MemoryMapped then configure skip init */
-	if (stm32_xspi_is_memorymap(dev)) {
-		LOG_DBG("NOR init'd in MemMapped mode\n");
-		/* Force HAL instance in correct state */
-		dev_data->hxspi.State = HAL_XSPI_STATE_BUSY_MEM_MAPPED;
-		return 0;
-	}
-#endif /* CONFIG_STM32_MEMMAP */
 
 	if (dev_cfg->pclk_len > 3) {
 		/* Max 3 domain clock are expected */
@@ -2104,8 +2131,11 @@ static int flash_stm32_xspi_init(const struct device *dev)
 			break;
 		}
 	}
-	__ASSERT_NO_MSG(prescaler >= STM32_XSPI_CLOCK_PRESCALER_MIN &&
-			prescaler <= STM32_XSPI_CLOCK_PRESCALER_MAX);
+
+	if (prescaler > STM32_XSPI_CLOCK_PRESCALER_MAX) {
+		LOG_ERR("XSPI could not find valid prescaler value");
+		return -EINVAL;
+	}
 
 	/* Initialize XSPI HAL structure completely */
 	dev_data->hxspi.Init.ClockPrescaler = prescaler;
@@ -2121,11 +2151,13 @@ static int flash_stm32_xspi_init(const struct device *dev)
 	} else {
 
 	}
+#if defined(XSPI_DCR1_DLYBYP)
 #if STM32_XSPI_DLYB_BYPASSED
 	dev_data->hxspi.Init.DelayBlockBypass = HAL_XSPI_DELAY_BLOCK_BYPASS;
 #else
 	dev_data->hxspi.Init.DelayBlockBypass = HAL_XSPI_DELAY_BLOCK_ON;
 #endif /* STM32_XSPI_DLYB_BYPASSED */
+#endif /* XSPI_DCR1_DLYBYP */
 
 
 	if (HAL_XSPI_Init(&dev_data->hxspi) != HAL_OK) {
@@ -2405,7 +2437,7 @@ static const struct flash_stm32_xspi_config flash_stm32_xspi_cfg = {
 	.pclken = pclken,
 	.pclk_len = DT_NUM_CLOCKS(STM32_XSPI_NODE),
 	.irq_config = flash_stm32_xspi_irq_config_func,
-	.flash_size = DT_INST_REG_ADDR_BY_IDX(0, 1),
+	.flash_size = DT_INST_PROP(0, size) / 8, /* In Bytes */
 	.max_frequency = DT_INST_PROP(0, ospi_max_frequency),
 	.data_mode = DT_INST_PROP(0, spi_bus_width), /* SPI or OPI */
 	.data_rate = DT_INST_PROP(0, data_rate), /* DTR or STR */

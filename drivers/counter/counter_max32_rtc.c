@@ -38,11 +38,6 @@ struct max32_rtc_config {
 
 static int api_start(const struct device *dev)
 {
-	/* Ensure that both sec and subsec are reset to 0 */
-	while (MXC_RTC_Init(0, 0) == E_BUSY) {
-		;
-	}
-
 	while (MXC_RTC_Start() == E_BUSY) {
 		;
 	}
@@ -225,7 +220,7 @@ static int rtc_max32_init(const struct device *dev)
 	return 0;
 }
 
-static const struct counter_driver_api counter_rtc_max32_driver_api = {
+static DEVICE_API(counter, counter_rtc_max32_driver_api) = {
 	.start = api_start,
 	.stop = api_stop,
 	.get_value = api_get_value,

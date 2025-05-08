@@ -8,6 +8,7 @@
 #include <st/g4/stm32g474Xe.dtsi>
 #include <st/g4/stm32g474r(b-c-e)tx-pinctrl.dtsi>
 #include "arduino_r3_connector.dtsi"
+#include "st_morpho_connector.dtsi"
 #include <zephyr/dt-bindings/input/input-event-codes.h>
 
 / {
@@ -203,7 +204,7 @@ stm32_lp_tick_source: &lptim1 {
 &adc1 {
 	pinctrl-0 = <&adc1_in1_pa0>;
 	pinctrl-names = "default";
-	st,adc-clock-source = <SYNC>;
+	st,adc-clock-source = "SYNC";
 	st,adc-prescaler = <4>;
 	status = "okay";
 };

@@ -9,10 +9,15 @@
 
 import re
 import subprocess
+from os import name as os_name
 from os import path
 from pathlib import Path
 
 from zephyr_ext_common import ZEPHYR_BASE
+
+if os_name != "nt":
+    import sys
+    import termios
 
 try:  # noqa SIM105
     from elftools.elf.elffile import ELFFile
@@ -44,8 +49,8 @@ class OpenOcdBinaryRunner(ZephyrBinaryRunner):
     '''Runner front-end for openocd.'''
 
     def __init__(self, cfg, pre_init=None, reset_halt_cmd=DEFAULT_OPENOCD_RESET_HALT_CMD,
-                 pre_load=None, load_cmd=None, verify_cmd=None, post_verify=None,
-                 do_verify=False, do_verify_only=False,
+                 pre_load=None, erase_cmd=None, load_cmd=None, verify_cmd=None,
+                 post_verify=None, do_verify=False, do_verify_only=False, do_erase=False,
                  tui=None, config=None, serial=None, use_elf=None,
                  no_halt=False, no_init=False, no_targets=False,
                  tcl_port=DEFAULT_OPENOCD_TCL_PORT,
@@ -54,7 +59,7 @@ class OpenOcdBinaryRunner(ZephyrBinaryRunner):
                  gdb_client_port=DEFAULT_OPENOCD_GDB_PORT,
                  gdb_init=None, no_load=False,
                  target_handle=DEFAULT_OPENOCD_TARGET_HANDLE,
-                 rtt_port=DEFAULT_OPENOCD_RTT_PORT):
+                 rtt_port=DEFAULT_OPENOCD_RTT_PORT, rtt_server=False):
         super().__init__(cfg)
 
         if not path.exists(cfg.board_dir):
@@ -93,11 +98,13 @@ class OpenOcdBinaryRunner(ZephyrBinaryRunner):
         self.pre_init = pre_init or []
         self.reset_halt_cmd = reset_halt_cmd
         self.pre_load = pre_load or []
+        self.erase_cmd = erase_cmd
         self.load_cmd = load_cmd
         self.verify_cmd = verify_cmd
         self.post_verify = post_verify or []
         self.do_verify = do_verify or False
         self.do_verify_only = do_verify_only or False
+        self.do_erase = do_erase or False
         self.tcl_port = tcl_port
         self.telnet_port = telnet_port
         self.gdb_port = gdb_port
@@ -113,6 +120,7 @@ class OpenOcdBinaryRunner(ZephyrBinaryRunner):
         self.load_arg = [] if no_load else ['-ex', 'load']
         self.target_handle = target_handle
         self.rtt_port = rtt_port
+        self.rtt_server = rtt_server
 
     @classmethod
     def name(cls):
@@ -120,7 +128,8 @@ class OpenOcdBinaryRunner(ZephyrBinaryRunner):
 
     @classmethod
     def capabilities(cls):
-        return RunnerCaps(commands={'flash', 'debug', 'debugserver', 'attach', 'rtt'}, rtt=True)
+        return RunnerCaps(commands={'flash', 'debug', 'debugserver', 'attach', 'rtt'},
+                          rtt=True, erase=True)
 
     @classmethod
     def do_add_parser(cls, parser):
@@ -142,6 +151,8 @@ class OpenOcdBinaryRunner(ZephyrBinaryRunner):
         parser.add_argument('--cmd-pre-load', action='append',
                             help='''Command to run before flashing;
                             may be given multiple times''')
+        parser.add_argument('--cmd-erase', action='append',
+                            help='''Command to erase device; may be given multiple times''')
         parser.add_argument('--cmd-load',
                             help='''Command to load/flash binary
                             (required when flashing)''')
@@ -184,6 +195,10 @@ class OpenOcdBinaryRunner(ZephyrBinaryRunner):
                             ''')
         parser.add_argument('--rtt-port', default=DEFAULT_OPENOCD_RTT_PORT,
                             help='openocd rtt port, defaults to 5555')
+        parser.add_argument('--rtt-server', default=False, action='store_true',
+                            help='''start the RTT server while debugging.
+                            To view the RTT log, connect to the rtt port using
+                            a command like telnet.''')
 
 
     @classmethod
@@ -191,16 +206,16 @@ class OpenOcdBinaryRunner(ZephyrBinaryRunner):
         return OpenOcdBinaryRunner(
             cfg,
             pre_init=args.cmd_pre_init, reset_halt_cmd=args.cmd_reset_halt,
-            pre_load=args.cmd_pre_load, load_cmd=args.cmd_load,
+            pre_load=args.cmd_pre_load, erase_cmd=args.cmd_erase, load_cmd=args.cmd_load,
             verify_cmd=args.cmd_verify, post_verify=args.cmd_post_verify,
-            do_verify=args.verify, do_verify_only=args.verify_only,
+            do_verify=args.verify, do_verify_only=args.verify_only, do_erase=args.erase,
             tui=args.tui, config=args.config, serial=args.serial,
             use_elf=args.use_elf, no_halt=args.no_halt, no_init=args.no_init,
             no_targets=args.no_targets, tcl_port=args.tcl_port,
             telnet_port=args.telnet_port, gdb_port=args.gdb_port,
             gdb_client_port=args.gdb_client_port, gdb_init=args.gdb_init,
             no_load=args.no_load, target_handle=args.target_handle,
-            rtt_port=args.rtt_port)
+            rtt_port=args.rtt_port, rtt_server=args.rtt_server)
 
     def print_gdbserver_message(self):
         if not self.thread_info_enabled:
@@ -222,7 +237,8 @@ class OpenOcdBinaryRunner(ZephyrBinaryRunner):
         out = self.check_output([self.openocd_cmd[0], '--version'],
                                 stderr=subprocess.STDOUT).decode()
 
-        version_match = re.search(r"Open On-Chip Debugger (\d+.\d+.\d+)", out)
+        # Account for version info format of ADI fork of OpenOCD as well
+        version_match = re.search(r"Open On-Chip Debugger.* v?(\d+.\d+.\d+)", out)
         version = version_match.group(1).split('.')
 
         return [to_num(i) for i in version]
@@ -285,8 +301,20 @@ class OpenOcdBinaryRunner(ZephyrBinaryRunner):
 
         load_image = []
         if not self.do_verify_only:
-            load_image = ['-c', self.reset_halt_cmd,
-                          '-c', self.load_cmd + ' ' + hex_name]
+            # Halt target
+            load_image = ['-c', self.reset_halt_cmd]
+            # Perform any erase operations
+            if self.do_erase:
+                if self.erase_cmd is None:
+                    self.logger.error('--erase not supported for target without --cmd-erase')
+                    return
+                for erase_cmd in self.erase_cmd:
+                    load_image += ["-c", erase_cmd]
+                # Trim the "erase" from "flash write_image erase" since a mass erase is already done
+                if self.load_cmd.endswith(' erase'):
+                    self.load_cmd = self.load_cmd[:-6]
+            # Load image
+            load_image +=['-c', self.load_cmd + ' ' + hex_name]
 
         verify_image = []
         if self.do_verify or self.do_verify_only:
@@ -366,6 +394,19 @@ class OpenOcdBinaryRunner(ZephyrBinaryRunner):
                        '-c', f'gdb_port {self.gdb_port}'] +
                       pre_init_cmd + self.init_arg + self.targets_arg +
                       self.halt_arg)
+
+        if self.rtt_server and command != 'rtt':
+            rtt_address = self.get_rtt_address()
+            if rtt_address is None:
+                raise ValueError("RTT Control block not found")
+
+            server_cmd = (
+                server_cmd
+                + ['-c', f'rtt setup 0x{rtt_address:x} 0x10 "SEGGER RTT"']
+                + ['-c', 'rtt start']
+                + ['-c', f'rtt server start {self.rtt_port} 0']
+            )
+
         gdb_cmd = (self.gdb_cmd + self.tui_arg +
                    ['-ex', f'target extended-remote :{self.gdb_client_port}',
                     self.elf_name])
@@ -378,7 +419,7 @@ class OpenOcdBinaryRunner(ZephyrBinaryRunner):
         if command == 'rtt':
             rtt_address = self.get_rtt_address()
             if rtt_address is None:
-                raise ValueError("RTT Control block not be found")
+                raise ValueError("RTT Control block not found")
 
             # cannot prompt the user to press return for automation purposes
             gdb_cmd.extend(['-ex', 'set pagination off'])
@@ -396,16 +437,38 @@ class OpenOcdBinaryRunner(ZephyrBinaryRunner):
         self.print_gdbserver_message()
 
         if command in ('attach', 'debug'):
-            self.run_server_and_client(server_cmd, gdb_cmd)
+            server_proc = self.popen_ignore_int(server_cmd, stderr=subprocess.DEVNULL)
+            try:
+                self.run_client(gdb_cmd)
+            finally:
+                server_proc.terminate()
+                server_proc.wait()
         elif command == 'rtt':
             self.print_rttserver_message()
             server_proc = self.popen_ignore_int(server_cmd)
+
+            if os_name != 'nt':
+                # Save the terminal settings
+                fd = sys.stdin.fileno()
+                new_term = termios.tcgetattr(fd)
+                old_term = termios.tcgetattr(fd)
+
+                # New terminal setting unbuffered
+                new_term[3] = new_term[3] & ~termios.ICANON & ~termios.ECHO
+                termios.tcsetattr(fd, termios.TCSAFLUSH, new_term)
+            else:
+                fd = None
+                old_term = None
+
             try:
                 # run the binary with gdb, set up the rtt server (runs to completion)
                 subprocess.run(gdb_cmd)
                 # run the rtt client in the foreground
                 self.run_telnet_client('localhost', self.rtt_port)
             finally:
+                if old_term is not None and fd is not None:
+                    termios.tcsetattr(fd, termios.TCSAFLUSH, old_term)
+
                 server_proc.terminate()
                 server_proc.wait()
 
@@ -426,5 +489,18 @@ class OpenOcdBinaryRunner(ZephyrBinaryRunner):
                 '-c', f'gdb_port {self.gdb_port}'] +
                pre_init_cmd + self.init_arg + self.targets_arg +
                ['-c', self.reset_halt_cmd])
+
+        if self.rtt_server:
+            rtt_address = self.get_rtt_address()
+            if rtt_address is None:
+                raise ValueError("RTT Control block not found")
+
+            cmd = (
+                cmd
+                + ['-c', f'rtt setup 0x{rtt_address:x} 0x10 "SEGGER RTT"']
+                + ['-c', 'rtt start']
+                + ['-c', f'rtt server start {self.rtt_port} 0']
+            )
+
         self.print_gdbserver_message()
         self.check_call(cmd)

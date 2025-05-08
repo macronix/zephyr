@@ -19,6 +19,7 @@
 	chosen {
 		zephyr,sram = &atcm;
 		zephyr,console = &uart2;
+		zephyr,shell-uart = &uart2;
 	};
 
 	cpus {
@@ -43,6 +44,12 @@
 		reg = <0xa2200000 DT_SIZE_M(14)>;
 		zephyr,memory-region = "DRAM";
 	};
+};
+
+&i2c6 {
+	status = "okay";
+	pinctrl-0 = <&i2c6_scl_default &i2c6_sda_default>;
+	pinctrl-names = "default";
 };
 
 &uart2 {

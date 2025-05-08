@@ -55,6 +55,8 @@ Arm Cortex-M implementation variants.
 +---------------------------------+-----------------------------------+-----------------+---------+--------+-----------+--------+---------+------------+------------+
 |                                 | HW-assisted stack limit checking  |        N        |   N     |   N    |    N      |    N   |Y [#f2]_ |     Y      |   Y        |
 +---------------------------------+-----------------------------------+-----------------+---------+--------+-----------+--------+---------+------------+------------+
+|                                 | Privileged Execute Never          |        N        |   N     |   N    |    N      |    N   |    N    |     N      |   Y [#f3]_ |
++---------------------------------+-----------------------------------+-----------------+---------+--------+-----------+--------+---------+------------+------------+
 | HW-assisted null-pointer        |                                   |                 |         |        |           |        |         |            |            |
 | dereference detection           |                                   |        N        |   N     |   Y    |    Y      |    Y   |    Y    |     Y      |   Y        |
 +---------------------------------+-----------------------------------+-----------------+---------+--------+-----------+--------+---------+------------+------------+
@@ -86,6 +88,7 @@ Notes
 
 .. [#f1] SysTick is optional in Cortex-M1
 .. [#f2] Stack limit checking only in Secure builds in Cortex-M23
+.. [#f3] https://developer.arm.com/documentation/107655/100/RTOS-and-Secure-software-design-considerations/Secure-software-development-design-considerations/Security-and-privilege-combination/Using-PXN-bit?lang=en
 
 OS features
 ***********
@@ -422,6 +425,8 @@ MPU stack guards
   detection mechanism; users may override this setting by manually enabling :kconfig:option:`CONFIG_MPU_STACK_GUARD`
   in these scenarios.
 
+.. _arm_cortex_m_mpu_considerations:
+
 Memory map and MPU considerations
 =================================
 
@@ -469,18 +474,19 @@ For example, to define a new non-cacheable memory region in devicetree:
    };
 
 This will automatically create a new MPU entry in with the correct name, base,
-size and attributes gathered directly from the devicetree.
+size and attributes gathered directly from the devicetree. See :ref:`cache_guide`
+and :ref:`mem_mgmt_api` for more details.
 
 Static MPU regions
 ------------------
 
 Additional *static* MPU regions may be programmed once during system boot. These regions
-are required to enable certain features
+are required to enable certain features. See :ref:`cache_guide` for more details.
 
 * a RX region to allow execution from SRAM, when :kconfig:option:`CONFIG_ARCH_HAS_RAMFUNC_SUPPORT` is
   enabled and users have defined functions to execute from SRAM.
 * a RX region for relocating text sections to SRAM, when :kconfig:option:`CONFIG_CODE_DATA_RELOCATION_SRAM` is enabled
-* a no-cache region to allow for a none-cacheable SRAM area, when :kconfig:option:`CONFIG_NOCACHE_MEMORY` is enabled
+* a ``nocache`` region to allow for a non-cacheable SRAM area, when :kconfig:option:`CONFIG_NOCACHE_MEMORY` is enabled
 * a possibly unprivileged RW region for GCOV code coverage accounting area, when :kconfig:option:`CONFIG_COVERAGE_GCOV` is enabled
 * a no-access region to implement null pointer dereference detection, when :kconfig:option:`CONFIG_NULL_POINTER_EXCEPTION_DETECTION_MPU` is enabled
 

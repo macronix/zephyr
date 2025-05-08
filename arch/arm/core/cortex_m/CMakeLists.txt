@@ -11,7 +11,6 @@ zephyr_library_sources(
   scb.c
   thread_abort.c
   vector_table.S
-  swap.c
   swap_helper.S
   irq_manage.c
   prep_c.c
@@ -61,4 +60,14 @@ zephyr_linker_sources(
   RAM_SECTIONS
   vt_pointer_section.ld
   )
+endif()
+
+if (CONFIG_CPU_CORTEX_M_HAS_VTOR)
+zephyr_linker_sources_ifdef(CONFIG_SRAM_VECTOR_TABLE
+  RAM_SECTIONS
+  # Maybe need to be changed in order to be placed at the beginning of RAM
+  # (conflict with code relocation script)
+  SORT_KEY 0
+  ram_vector_table.ld
+)
 endif()

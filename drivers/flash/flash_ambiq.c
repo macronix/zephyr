@@ -11,7 +11,7 @@
 #include <zephyr/drivers/flash.h>
 #include <zephyr/logging/log.h>
 
-#include <am_mcu_apollo.h>
+#include <soc.h>
 
 LOG_MODULE_REGISTER(flash_ambiq, CONFIG_FLASH_LOG_LEVEL);
 
@@ -211,7 +211,7 @@ static void flash_ambiq_pages_layout(const struct device *dev,
 }
 #endif /* CONFIG_FLASH_PAGE_LAYOUT */
 
-static const struct flash_driver_api flash_ambiq_driver_api = {
+static DEVICE_API(flash, flash_ambiq_driver_api) = {
 	.read = flash_ambiq_read,
 	.write = flash_ambiq_write,
 	.erase = flash_ambiq_erase,

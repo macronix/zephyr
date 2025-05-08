@@ -13,9 +13,6 @@ config SYS_CLOCK_HW_CYCLES_PER_SEC
 config RISCV_SOC_INTERRUPT_INIT
 	default y
 
-config RISCV_GP
-	default y
-
 config 2ND_LVL_ISR_TBL_OFFSET
 	default 13
 
@@ -26,6 +23,6 @@ config MAX_IRQ_PER_AGGREGATOR
 	default 186
 
 config NUM_IRQS
-	default 186
+	default 199
 
 endif # SOC_SERIES_POLARFIRE

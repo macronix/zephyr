@@ -12,10 +12,14 @@
 #include "usb_phy.h"
 #include "usb.h"
 
-/* USB PHY condfiguration */
+/* USB PHY configuration */
 #define BOARD_USB_PHY_D_CAL     (0x04U)
 #define BOARD_USB_PHY_TXCAL45DP (0x07U)
 #define BOARD_USB_PHY_TXCAL45DM (0x07U)
+
+usb_phy_config_struct_t usbPhyConfig = {
+	BOARD_USB_PHY_D_CAL, BOARD_USB_PHY_TXCAL45DP, BOARD_USB_PHY_TXCAL45DM,
+};
 #endif
 
 /* Board xtal frequency in Hz */
@@ -80,7 +84,7 @@ __ramfunc static void enable_cache64(void)
 }
 #endif
 
-static int frdm_mcxn947_init(void)
+void board_early_init_hook(void)
 {
 	power_mode_od();
 
@@ -127,43 +131,50 @@ static int frdm_mcxn947_init(void)
 
 	CLOCK_SetupExtClocking(BOARD_XTAL0_CLK_HZ);
 
-#if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(flexcan0))
-	/* Set up PLL1 for 80 MHz FlexCAN clock */
-	const pll_setup_t pll1Setup = {
-		.pllctrl = SCG_SPLLCTRL_SOURCE(1U) | SCG_SPLLCTRL_SELI(27U) |
-			   SCG_SPLLCTRL_SELP(13U),
-		.pllndiv = SCG_SPLLNDIV_NDIV(3U),
-		.pllpdiv = SCG_SPLLPDIV_PDIV(1U),
-		.pllmdiv = SCG_SPLLMDIV_MDIV(10U),
-		.pllRate = 80000000U
-	};
+#if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(sai0)) || DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(sai1))
+	/* < Set up PLL1 */
+	const pll_setup_t pll1_Setup = {
+		.pllctrl = SCG_SPLLCTRL_SOURCE(1U) | SCG_SPLLCTRL_SELI(3U) |
+				 SCG_SPLLCTRL_SELP(1U),
+		.pllndiv = SCG_SPLLNDIV_NDIV(25U),
+		.pllpdiv = SCG_SPLLPDIV_PDIV(10U),
+		.pllmdiv = SCG_SPLLMDIV_MDIV(256U),
+		.pllRate = 24576000U};
 
 	/* Configure PLL1 to the desired values */
-	CLOCK_SetPLL1Freq(&pll1Setup);
-	/* PLL1 Monitor is disabled */
-	CLOCK_SetPll1MonitorMode(kSCG_Pll1MonitorDisable);
+	CLOCK_SetPLL1Freq(&pll1_Setup);
 	/* Set PLL1 CLK0 divider to value 1 */
 	CLOCK_SetClkDiv(kCLOCK_DivPLL1Clk0, 1U);
 #endif
 
 #if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(flexcomm1))
+	/* Configure input clock to be able to reach the datasheet specified SPI band rate. */
 	CLOCK_SetClkDiv(kCLOCK_DivFlexcom1Clk, 1u);
-	CLOCK_AttachClk(kFRO12M_to_FLEXCOMM1);
+	CLOCK_AttachClk(kFRO_HF_DIV_to_FLEXCOMM1);
 #endif
 
 #if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(flexcomm2))
+	/* Configure input clock to be able to reach the datasheet specified SPI band rate. */
 	CLOCK_SetClkDiv(kCLOCK_DivFlexcom2Clk, 1u);
-	CLOCK_AttachClk(kFRO12M_to_FLEXCOMM2);
+	CLOCK_AttachClk(kFRO_HF_DIV_to_FLEXCOMM2);
+#endif
+
+#if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(flexcomm3))
+	/* Configure input clock to be able to reach the datasheet specified SPI band rate. */
+	CLOCK_SetClkDiv(kCLOCK_DivFlexcom3Clk, 1u);
+	CLOCK_AttachClk(kFRO_HF_DIV_to_FLEXCOMM3);
 #endif
 
 #if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(flexcomm4))
+	/* Configure input clock to be able to reach the datasheet specified SPI band rate. */
 	CLOCK_SetClkDiv(kCLOCK_DivFlexcom4Clk, 1u);
-	CLOCK_AttachClk(kFRO12M_to_FLEXCOMM4);
+	CLOCK_AttachClk(kFRO_HF_DIV_to_FLEXCOMM4);
 #endif
 
 #if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(flexcomm7))
+	/* Configure input clock to be able to reach the datasheet specified SPI band rate. */
 	CLOCK_SetClkDiv(kCLOCK_DivFlexcom7Clk, 1u);
-	CLOCK_AttachClk(kFRO12M_to_FLEXCOMM7);
+	CLOCK_AttachClk(kFRO_HF_DIV_to_FLEXCOMM7);
 #endif
 
 #if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(os_timer))
@@ -246,7 +257,7 @@ static int frdm_mcxn947_init(void)
 
 #if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(flexcan0))
 	CLOCK_SetClkDiv(kCLOCK_DivFlexcan0Clk, 1U);
-	CLOCK_AttachClk(kPLL1_CLK0_to_FLEXCAN0);
+	CLOCK_AttachClk(kFRO_HF_to_FLEXCAN0);
 #endif
 
 #if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(usdhc0))
@@ -284,11 +295,7 @@ static int frdm_mcxn947_init(void)
 	CLOCK_AttachClk(kFRO_HF_to_ADC0);
 #endif
 
-#if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(usb1)) && CONFIG_USB_DC_NXP_EHCI
-	usb_phy_config_struct_t usbPhyConfig = {
-		BOARD_USB_PHY_D_CAL, BOARD_USB_PHY_TXCAL45DP, BOARD_USB_PHY_TXCAL45DM,
-	};
-
+#if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(usb1)) && (CONFIG_USB_DC_NXP_EHCI || CONFIG_UDC_NXP_EHCI)
 	SPC0->ACTIVE_VDELAY = 0x0500;
 	/* Change the power DCDC to 1.8v (By default, DCDC is 1.8V), CORELDO to 1.1v (By default,
 	 * CORELDO is 1.0V)
@@ -323,7 +330,9 @@ static int frdm_mcxn947_init(void)
 	CLOCK_EnableClock(kCLOCK_UsbHsPhy);
 	CLOCK_EnableUsbhsPhyPllClock(kCLOCK_Usbphy480M, BOARD_XTAL0_CLK_HZ);
 	CLOCK_EnableUsbhsClock();
+#if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(usb1)) && CONFIG_USB_DC_NXP_EHCI
 	USB_EhciPhyInit(kUSB_ControllerEhci0, BOARD_XTAL0_CLK_HZ, &usbPhyConfig);
+#endif
 #endif
 
 #if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(lpcmp0))
@@ -381,10 +390,18 @@ static int frdm_mcxn947_init(void)
 	CLOCK_AttachClk(kFRO_HF_to_SCT);
 #endif
 
+#if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(sai0))
+	CLOCK_SetClkDiv(kCLOCK_DivSai0Clk, 1u);
+	CLOCK_AttachClk(kPLL1_CLK0_to_SAI0);
+	CLOCK_EnableClock(kCLOCK_Sai0);
+#endif
+
+#if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(sai1))
+	CLOCK_SetClkDiv(kCLOCK_DivSai1Clk, 1u);
+	CLOCK_AttachClk(kPLL1_CLK0_to_SAI1);
+	CLOCK_EnableClock(kCLOCK_Sai1);
+#endif
+
 	/* Set SystemCoreClock variable. */
 	SystemCoreClock = CLOCK_INIT_CORE_CLOCK;
-
-	return 0;
 }
-
-SYS_INIT(frdm_mcxn947_init, PRE_KERNEL_1, CONFIG_BOARD_INIT_PRIORITY);

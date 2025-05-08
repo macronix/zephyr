@@ -29,7 +29,6 @@ static int ntc_thermistor_sample_fetch(const struct device *dev, enum sensor_cha
 {
 	struct ntc_thermistor_data *data = dev->data;
 	const struct ntc_thermistor_config *cfg = dev->config;
-	enum pm_device_state pm_state;
 	int res;
 	struct adc_sequence sequence = {
 		.options = NULL,
@@ -37,11 +36,6 @@ static int ntc_thermistor_sample_fetch(const struct device *dev, enum sensor_cha
 		.buffer_size = sizeof(data->raw),
 		.calibrate = false,
 	};
-
-	(void)pm_device_state_get(dev, &pm_state);
-	if (pm_state != PM_DEVICE_STATE_ACTIVE) {
-		return -EIO;
-	}
 
 	k_mutex_lock(&data->mutex, K_FOREVER);
 
@@ -87,7 +81,7 @@ static int ntc_thermistor_channel_get(const struct device *dev, enum sensor_chan
 	return 0;
 }
 
-static const struct sensor_driver_api ntc_thermistor_driver_api = {
+static DEVICE_API(sensor, ntc_thermistor_driver_api) = {
 	.sample_fetch = ntc_thermistor_sample_fetch,
 	.channel_get = ntc_thermistor_channel_get,
 };

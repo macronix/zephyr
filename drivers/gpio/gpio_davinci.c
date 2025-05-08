@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2023 BeagleBoard.org Foundation
  * Copyright (C) 2023 S Prashanth
+ * Copyright (C) 2025 Siemens Mobility GmbH
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -53,8 +54,8 @@ struct gpio_davinci_data {
 };
 
 struct gpio_davinci_config {
-	void (*bank_config)(const struct device *dev);
 	struct gpio_driver_config common;
+	void (*bank_config)(const struct device *dev);
 
 	DEVICE_MMIO_NAMED_ROM(port_base);
 
@@ -139,7 +140,7 @@ static int gpio_davinci_port_toggle_bits(const struct device *dev,
 	return 0;
 }
 
-static const struct gpio_driver_api gpio_davinci_driver_api = {
+static DEVICE_API(gpio, gpio_davinci_driver_api) = {
 	.pin_configure = gpio_davinci_configure,
 	.port_get_raw = gpio_davinci_port_get_raw,
 	.port_set_masked_raw = gpio_davinci_port_set_masked_raw,

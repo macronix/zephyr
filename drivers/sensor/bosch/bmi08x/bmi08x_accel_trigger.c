@@ -20,15 +20,6 @@ static void bmi08x_handle_drdy_acc(const struct device *dev)
 {
 	struct bmi08x_accel_data *data = dev->data;
 
-#ifdef CONFIG_PM_DEVICE
-	enum pm_device_state state;
-
-	(void)pm_device_state_get(dev, &state);
-	if (state != PM_DEVICE_STATE_ACTIVE) {
-		return;
-	}
-#endif
-
 	if (data->handler_drdy_acc) {
 		data->handler_drdy_acc(dev, data->drdy_trig_acc);
 	}
@@ -89,8 +80,8 @@ int bmi08x_trigger_set_acc(const struct device *dev, const struct sensor_trigger
 	struct bmi08x_accel_data *data = dev->data;
 
 	if ((trig->chan == SENSOR_CHAN_ACCEL_XYZ) && (trig->type == SENSOR_TRIG_DATA_READY)) {
-		data->handler_drdy_acc = handler;
 		data->drdy_trig_acc = trig;
+		data->handler_drdy_acc = handler;
 		return 0;
 	}
 

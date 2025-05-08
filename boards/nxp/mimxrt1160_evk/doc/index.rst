@@ -83,7 +83,7 @@ This platform has the following external memories:
 |                    |            | data block, which sets up SEMC at   |
 |                    |            | boot time                           |
 +--------------------+------------+-------------------------------------+
-| IS25WP128          | FLEXSPI    | Enabled via flash configurationn    |
+| IS25WP128          | FLEXSPI    | Enabled via flash configuration     |
 |                    |            | block, which sets up FLEXSPI at     |
 |                    |            | boot time.                          |
 +--------------------+------------+-------------------------------------+
@@ -91,64 +91,15 @@ This platform has the following external memories:
 Supported Features
 ==================
 
-The mimxrt1160_evk board configuration supports the hardware features listed
-below.  For additional features not yet supported, please also refer to the
-:zephyr:board:`mimxrt1170_evk` , which is the superset board in NXP's i.MX RT11xx family.
-NXP prioritizes enabling the superset board with NXP's Full Platform Support for
-Zephyr.  Therefore, the mimxrt1170_evk board may have additional features
-already supported, which can also be re-used on this mimxrt1160_evk board:
+.. zephyr:board-supported-hw::
 
-+-----------+------------+-------------------------------------+
-| Interface | Controller | Driver/Component                    |
-+===========+============+=====================================+
-| NVIC      | on-chip    | nested vector interrupt controller  |
-+-----------+------------+-------------------------------------+
-| SYSTICK   | on-chip    | systick                             |
-+-----------+------------+-------------------------------------+
-| GPIO      | on-chip    | gpio                                |
-+-----------+------------+-------------------------------------+
-| COUNTER   | on-chip    | counter                             |
-+-----------+------------+-------------------------------------+
-| UART      | on-chip    | serial port-polling;                |
-|           |            | serial port-interrupt               |
-+-----------+------------+-------------------------------------+
-| SPI       | on-chip    | spi                                 |
-+-----------+------------+-------------------------------------+
-| I2C       | on-chip    | i2c                                 |
-+-----------+------------+-------------------------------------+
-| ADC       | on-chip    | adc                                 |
-+-----------+------------+-------------------------------------+
-| CAN       | on-chip    | flexcan                             |
-+-----------+------------+-------------------------------------+
-| WATCHDOG  | on-chip    | watchdog                            |
-+-----------+------------+-------------------------------------+
-| PWM       | on-chip    | pwm                                 |
-+-----------+------------+-------------------------------------+
-| DMA       | on-chip    | dma                                 |
-+-----------+------------+-------------------------------------+
-| GPT       | on-chip    | gpt                                 |
-+-----------+------------+-------------------------------------+
-| USB       | on-chip    | USB Device                          |
-+-----------+------------+-------------------------------------+
-| HWINFO    | on-chip    | Unique device serial number         |
-+-----------+------------+-------------------------------------+
-| CAAM RNG  | on-chip    | entropy                             |
-+-----------+------------+-------------------------------------+
-| FLEXSPI   | on-chip    | flash programming                   |
-+-----------+------------+-------------------------------------+
-| PIT       | on-chip    | pit                                 |
-+-----------+------------+-------------------------------------+
-| DISPLAY   | on-chip    | eLCDIF; MIPI-DSI. Tested with       |
-|           |            | :ref:`rk055hdmipi4m`,               |
-|           |            | :ref:`rk055hdmipi4ma0`,             |
-|           |            | and :ref:`g1120b0mipi` shields      |
-+-----------+------------+-------------------------------------+
+.. note::
 
-The default configuration can be found in the defconfig file:
-:zephyr_file:`boards/nxp/mimxrt1160_evk/mimxrt1160_evk_mimxrt1166_cm7_defconfig`
-
-Other hardware features are not currently supported by the port.
-
+   For additional features not yet supported, please also refer to the
+   :zephyr:board:`mimxrt1170_evk` , which is the superset board in NXP's i.MX RT11xx family.
+   NXP prioritizes enabling the superset board with NXP's Full Platform Support for
+   Zephyr.  Therefore, the mimxrt1170_evk board may have additional features
+   already supported, which can also be re-used on this mimxrt1160_evk board:
 
 Connections and I/Os
 ====================
@@ -239,6 +190,8 @@ remaining are not used.
 Programming and Debugging
 *************************
 
+.. zephyr:board-supported-runners::
+
 Build and flash applications as usual (see :ref:`build_an_application` and
 :ref:`application_run` for more details).
 
@@ -264,6 +217,25 @@ configured by default to use the :ref:`opensda-daplink-onboard-debug-probe`,
 however the :ref:`pyocd-debug-host-tools` do not yet support programming the
 external flashes on this board so you must reconfigure the board for one of the
 following debug probes instead.
+
+Launching Images Targeting M4 Core
+==================================
+If building targeting the M4 core, the M7 core must first run code to launch
+the M4 image, by copying it into the ``ocram`` region then kicking off the M4
+core. When building using sysbuild targeting the M4 core, a minimal "launcher"
+image will be built and flashed to the M7 core, which loads and kicks off
+the M4 core. Therefore when developing an application intended to run
+standalone on the M4 core, it is recommended to build with sysbuild, like
+so:
+
+.. zephyr-app-commands::
+   :zephyr-app: samples/hello_world
+   :board: mimxrt1160_evk/mimxrt1166/cm4
+   :west-args: --sysbuild
+   :goals: flash
+
+If desired, this behavior can be disabled by building with
+``-DSB_CONFIG_SECOND_CORE_MCUX_LAUNCHER=n``
 
 Using J-Link
 ------------
@@ -342,6 +314,9 @@ should see the following message in the terminal:
 
    ***** Booting Zephyr OS v2.4.0-xxxx-xxxxxxxxxxxxx *****
    Hello World! mimxrt1160_evk
+
+.. include:: ../../common/board-footer.rst
+   :start-after: nxp-board-footer
 
 .. _MIMXRT1160-EVK Website:
    https://www.nxp.com/design/development-boards/i-mx-evaluation-and-development-boards/i-mx-rt1160-evaluation-kit:MIMXRT1160-EVK

@@ -17,10 +17,12 @@
 	chosen {
 		zephyr,console = &usart0;
 		zephyr,shell-uart = &usart0;
+		zephyr,uart-pipe = &usart0;
 		zephyr,sram = &sram0;
 		zephyr,flash = &flash0;
 		zephyr,code-partition = &slot0_partition;
 		zephyr,bt-hci = &bt_hci_silabs;
+		zephyr,display = &ls0xx_ls013b7dh03;
 	};
 
 	/* These aliases are provided for compatibility with samples */
@@ -30,16 +32,17 @@
 		sw0 = &button0;
 		sw1 = &button1;
 		watchdog0 = &wdog0;
+		dht0 = &si7021;
 	};
 
 	leds {
 		compatible = "gpio-leds";
 		led0: led_0 {
-			gpios = <&gpiob GECKO_PIN(2) GPIO_ACTIVE_HIGH>;
+			gpios = <&gpiob 2 GPIO_ACTIVE_HIGH>;
 			label = "LED 0";
 		};
 		led1: led_1 {
-			gpios = <&gpiob GECKO_PIN(4) GPIO_ACTIVE_HIGH>;
+			gpios = <&gpiob 4 GPIO_ACTIVE_HIGH>;
 			label = "LED 1";
 		};
 	};
@@ -47,21 +50,33 @@
 	buttons {
 		compatible = "gpio-keys";
 		button0: button_0 {
-			gpios = <&gpiob GECKO_PIN(1) GPIO_ACTIVE_LOW>;
+			gpios = <&gpiob 1 GPIO_ACTIVE_LOW>;
 			label = "User Push Button 0";
 			zephyr,code = <INPUT_KEY_0>;
 		};
 		button1: button_1 {
-			gpios = <&gpiob GECKO_PIN(3) GPIO_ACTIVE_LOW>;
+			gpios = <&gpiob 3 GPIO_ACTIVE_LOW>;
 			label = "User Push Button 1";
 			zephyr,code = <INPUT_KEY_1>;
 		};
 	};
 
+	sensor_enable: sensor_enable {
+		compatible = "regulator-fixed";
+		regulator-name = "sensor_enable";
+		enable-gpios = <&gpiod 3 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+	};
 };
 
 &cpu0 {
 	clock-frequency = <78000000>;
+};
+
+&itm {
+	pinctrl-0 = <&itm_default>;
+	pinctrl-names = "default";
+	swo-ref-frequency = <DT_FREQ_M(78)>;
 };
 
 &pstate_em3 {
@@ -115,6 +130,53 @@
 	pinctrl-0 = <&usart0_default>;
 	pinctrl-names = "default";
 	status = "okay";
+};
+
+&eusart1 {
+	compatible = "silabs,eusart-spi";
+	pinctrl-0 = <&eusart1_default>;
+	pinctrl-names = "default";
+	clock-frequency = <DT_FREQ_M(10)>;
+	cs-gpios = <&gpioc 8 GPIO_ACTIVE_HIGH>, <&gpioc 4 GPIO_ACTIVE_LOW>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	ls0xx_ls013b7dh03: ls0xx@0 {
+		compatible = "sharp,ls0xx";
+		spi-max-frequency = <DT_FREQ_K(1100)>;
+		reg = <0>;
+		width = <128>;
+		height = <128>;
+		extcomin-gpios = <&gpioc 6 GPIO_ACTIVE_HIGH>;
+		extcomin-frequency = <60>;
+		disp-en-gpios = <&gpioc 9 GPIO_ACTIVE_HIGH>;
+	};
+
+	mx25r80: mx25r8035f@1 {
+		compatible = "jedec,spi-nor";
+		reg = <1>;
+		spi-max-frequency = <DT_FREQ_M(33)>;
+		size = <DT_SIZE_M(8)>;
+		jedec-id = [c2 28 14];
+		has-dpd;
+		dpd-wakeup-sequence = <30000 20 35000>;
+		mxicy,mx25r-power-mode = "low-power";
+		zephyr,pm-device-runtime-auto;
+	};
+};
+
+&i2c0 {
+	pinctrl-0 = <&i2c0_default>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	si7021: si7021@40 {
+		compatible = "silabs,si7006";
+		reg = <0x40>;
+		vin-supply = <&sensor_enable>;
+		status = "okay";
+	};
 };
 
 &gpio {

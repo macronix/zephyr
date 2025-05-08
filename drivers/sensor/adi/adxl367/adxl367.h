@@ -13,16 +13,36 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/util.h>
+#include <zephyr/dt-bindings/sensor/adxl367.h>
 
-#define DT_DRV_COMPAT adi_adxl367
-
+#define DT_DRV_COMPAT  adi_adxl367
 #if DT_ANY_INST_ON_BUS_STATUS_OKAY(spi)
-#include <zephyr/drivers/spi.h>
+#define ADXL367_BUS_SPI
 #endif /* DT_ANY_INST_ON_BUS_STATUS_OKAY(spi) */
-
 #if DT_ANY_INST_ON_BUS_STATUS_OKAY(i2c)
-#include <zephyr/drivers/i2c.h>
+#define ADXL367_BUS_I2C
 #endif /* DT_ANY_INST_ON_BUS_STATUS_OKAY(i2c) */
+#undef DT_DRV_COMPAT
+
+#define DT_DRV_COMPAT  adi_adxl366
+#if DT_ANY_INST_ON_BUS_STATUS_OKAY(spi)
+#define ADXL367_BUS_SPI
+#endif /* DT_ANY_INST_ON_BUS_STATUS_OKAY(spi) */
+#if DT_ANY_INST_ON_BUS_STATUS_OKAY(i2c)
+#define ADXL367_BUS_I2C
+#endif /* DT_ANY_INST_ON_BUS_STATUS_OKAY(i2c) */
+#undef DT_DRV_COMPAT
+
+#ifdef ADXL367_BUS_SPI
+#include <zephyr/drivers/spi.h>
+#endif /* ADXL367_BUS_SPI */
+
+#ifdef ADXL367_BUS_I2C
+#include <zephyr/drivers/i2c.h>
+#endif /* ADXL367_BUS_I2C */
+
+#define ADXL367_CHIP_ID		0
+#define ADXL366_CHIP_ID		1
 
 /*
  * ADXL367 registers definition
@@ -261,10 +281,10 @@ enum adxl367_fifo_format {
 };
 
 enum adxl367_fifo_mode {
-	ADXL367_FIFO_DISABLED,
-	ADXL367_OLDEST_SAVED,
-	ADXL367_STREAM_MODE,
-	ADXL367_TRIGGERED_MODE
+	ADXL367_FIFO_DISABLED = ADXL367_FIFO_MODE_DISABLED,
+	ADXL367_OLDEST_SAVED = ADXL367_FIFO_MODE_OLDEST_SAVED,
+	ADXL367_STREAM_MODE = ADXL367_FIFO_MODE_STREAM,
+	ADXL367_TRIGGERED_MODE = ADXL367_FIFO_MODE_TRIGGERED
 };
 
 enum adxl367_fifo_read_mode {
@@ -355,12 +375,12 @@ struct adxl367_data {
 };
 
 struct adxl367_dev_config {
-#if DT_ANY_INST_ON_BUS_STATUS_OKAY(i2c)
+#ifdef ADXL367_BUS_I2C
 	struct i2c_dt_spec i2c;
-#endif
-#if DT_ANY_INST_ON_BUS_STATUS_OKAY(spi)
+#endif /* ADXL367_BUS_I2C */
+#ifdef ADXL367_BUS_SPI
 	struct spi_dt_spec spi;
-#endif
+#endif /* ADXL367_BUS_SPI */
 	int (*bus_init)(const struct device *dev);
 
 #ifdef CONFIG_ADXL367_TRIGGER
@@ -383,6 +403,7 @@ struct adxl367_dev_config {
 
 	uint16_t inactivity_time;
 	uint8_t activity_time;
+	uint8_t chip_id;
 };
 
 struct adxl367_fifo_data {

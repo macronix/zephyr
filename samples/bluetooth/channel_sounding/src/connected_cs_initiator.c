@@ -16,6 +16,7 @@
 #define CS_CONFIG_ID     0
 #define NUM_MODE_0_STEPS 1
 
+static K_SEM_DEFINE(sem_acl_encryption_enabled, 0, 1);
 static K_SEM_DEFINE(sem_remote_capabilities_obtained, 0, 1);
 static K_SEM_DEFINE(sem_config_created, 0, 1);
 static K_SEM_DEFINE(sem_cs_security_enabled, 0, 1);
@@ -126,32 +127,65 @@ static void disconnected_cb(struct bt_conn *conn, uint8_t reason)
 	connection = NULL;
 }
 
-static void remote_capabilities_cb(struct bt_conn *conn, struct bt_conn_le_cs_capabilities *params)
+static void security_changed_cb(struct bt_conn *conn, bt_security_t level, enum bt_security_err err)
+{
+	if (err) {
+		printk("Encryption failed. (err %d)\n", err);
+	} else {
+		printk("Security changed to level %d.\n", level);
+	}
+
+	k_sem_give(&sem_acl_encryption_enabled);
+}
+
+static void remote_capabilities_cb(struct bt_conn *conn,
+				   uint8_t status,
+				   struct bt_conn_le_cs_capabilities *params)
 {
 	ARG_UNUSED(params);
-	printk("CS capability exchange completed.\n");
-	k_sem_give(&sem_remote_capabilities_obtained);
+
+	if (status == BT_HCI_ERR_SUCCESS) {
+		printk("CS capability exchange completed.\n");
+		k_sem_give(&sem_remote_capabilities_obtained);
+	} else {
+		printk("CS capability exchange failed. (HCI status 0x%02x)\n", status);
+	}
 }
 
-static void config_created_cb(struct bt_conn *conn, struct bt_conn_le_cs_config *config)
+static void config_create_cb(struct bt_conn *conn,
+			     uint8_t status,
+			     struct bt_conn_le_cs_config *config)
 {
-	printk("CS config creation complete. ID: %d\n", config->id);
-	k_sem_give(&sem_config_created);
+	if (status == BT_HCI_ERR_SUCCESS) {
+		printk("CS config creation complete. ID: %d\n", config->id);
+		k_sem_give(&sem_config_created);
+	} else {
+		printk("CS config creation failed. (HCI status 0x%02x)\n", status);
+	}
 }
 
-static void security_enabled_cb(struct bt_conn *conn)
+static void security_enable_cb(struct bt_conn *conn, uint8_t status)
 {
-	printk("CS security enabled.\n");
-	k_sem_give(&sem_cs_security_enabled);
+	if (status == BT_HCI_ERR_SUCCESS) {
+		printk("CS security enabled.\n");
+		k_sem_give(&sem_cs_security_enabled);
+	} else {
+		printk("CS security enable failed. (HCI status 0x%02x)\n", status);
+	}
 }
 
-static void procedure_enabled_cb(struct bt_conn *conn,
+static void procedure_enable_cb(struct bt_conn *conn,
+				 uint8_t status,
 				 struct bt_conn_le_cs_procedure_enable_complete *params)
 {
-	if (params->state == 1) {
-		printk("CS procedures enabled.\n");
+	if (status == BT_HCI_ERR_SUCCESS) {
+		if (params->state == 1) {
+			printk("CS procedures enabled.\n");
+		} else {
+			printk("CS procedures disabled.\n");
+		}
 	} else {
-		printk("CS procedures disabled.\n");
+		printk("CS procedures enable failed. (HCI status 0x%02x)\n", status);
 	}
 }
 
@@ -210,10 +244,11 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
 BT_CONN_CB_DEFINE(conn_cb) = {
 	.connected = connected_cb,
 	.disconnected = disconnected_cb,
-	.le_cs_remote_capabilities_available = remote_capabilities_cb,
-	.le_cs_config_created = config_created_cb,
-	.le_cs_security_enabled = security_enabled_cb,
-	.le_cs_procedure_enabled = procedure_enabled_cb,
+	.security_changed = security_changed_cb,
+	.le_cs_read_remote_capabilities_complete = remote_capabilities_cb,
+	.le_cs_config_complete = config_create_cb,
+	.le_cs_security_enable_complete = security_enable_cb,
+	.le_cs_procedure_enable_complete = procedure_enable_cb,
 	.le_cs_subevent_data_available = subevent_result_cb,
 };
 
@@ -261,6 +296,8 @@ int main(void)
 		printk("Failed to encrypt connection (err %d)\n", err);
 		return 0;
 	}
+
+	k_sem_take(&sem_acl_encryption_enabled, K_FOREVER);
 
 	err = bt_le_cs_read_remote_supported_capabilities(connection);
 	if (err) {
@@ -314,12 +351,12 @@ int main(void)
 		.max_procedure_count = 0,
 		.min_subevent_len = 6750,
 		.max_subevent_len = 6750,
-		.tone_antenna_config_selection = BT_LE_CS_TONE_ANTENNA_CONFIGURATION_INDEX_ONE,
+		.tone_antenna_config_selection = BT_LE_CS_TONE_ANTENNA_CONFIGURATION_A1_B1,
 		.phy = BT_LE_CS_PROCEDURE_PHY_1M,
 		.tx_power_delta = 0x80,
 		.preferred_peer_antenna = BT_LE_CS_PROCEDURE_PREFERRED_PEER_ANTENNA_1,
-		.snr_control_initiator = BT_LE_CS_INITIATOR_SNR_CONTROL_NOT_USED,
-		.snr_control_reflector = BT_LE_CS_REFLECTOR_SNR_CONTROL_NOT_USED,
+		.snr_control_initiator = BT_LE_CS_SNR_CONTROL_NOT_USED,
+		.snr_control_reflector = BT_LE_CS_SNR_CONTROL_NOT_USED,
 	};
 
 	err = bt_le_cs_set_procedure_parameters(connection, &procedure_params);

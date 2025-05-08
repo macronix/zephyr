@@ -57,7 +57,7 @@
 
 LOG_MODULE_REGISTER(mcumgr_os_grp, CONFIG_MCUMGR_GRP_OS_LOG_LEVEL);
 
-#ifdef CONFIG_REBOOT
+#if defined(CONFIG_REBOOT) && defined(CONFIG_MULTITHREADING)
 static void os_mgmt_reset_work_handler(struct k_work *work);
 
 K_WORK_DELAYABLE_DEFINE(os_mgmt_reset_work, os_mgmt_reset_work_handler);
@@ -354,12 +354,14 @@ static int os_mgmt_taskstat_read(struct smp_streamer *ctxt)
 /**
  * Command handler: os reset
  */
+#ifdef CONFIG_MULTITHREADING
 static void os_mgmt_reset_work_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
 
 	sys_reboot(SYS_REBOOT_WARM);
 }
+#endif
 
 static int os_mgmt_reset(struct smp_streamer *ctxt)
 {
@@ -398,8 +400,12 @@ static int os_mgmt_reset(struct smp_streamer *ctxt)
 	}
 #endif
 
+#ifdef CONFIG_MULTITHREADING
 	/* Reboot the system from the system workqueue thread. */
 	k_work_schedule(&os_mgmt_reset_work, K_MSEC(CONFIG_MCUMGR_GRP_OS_RESET_MS));
+#else
+	sys_reboot(SYS_REBOOT_WARM);
+#endif
 
 	return 0;
 }
@@ -430,7 +436,10 @@ os_mgmt_mcumgr_params(struct smp_streamer *ctxt)
 #define BOOTLOADER_MODE MCUBOOT_MODE_SWAP_USING_SCRATCH
 #elif defined(CONFIG_MCUBOOT_BOOTLOADER_MODE_OVERWRITE_ONLY)
 #define BOOTLOADER_MODE MCUBOOT_MODE_UPGRADE_ONLY
-#elif defined(CONFIG_MCUBOOT_BOOTLOADER_MODE_SWAP_WITHOUT_SCRATCH)
+#elif defined(CONFIG_MCUBOOT_BOOTLOADER_MODE_SWAP_USING_OFFSET)
+#define BOOTLOADER_MODE MCUBOOT_MODE_SWAP_USING_OFFSET
+#elif defined(CONFIG_MCUBOOT_BOOTLOADER_MODE_SWAP_USING_MOVE) || \
+defined(CONFIG_MCUBOOT_BOOTLOADER_MODE_SWAP_WITHOUT_SCRATCH)
 #define BOOTLOADER_MODE MCUBOOT_MODE_SWAP_USING_MOVE
 #elif defined(CONFIG_MCUBOOT_BOOTLOADER_MODE_DIRECT_XIP)
 #define BOOTLOADER_MODE MCUBOOT_MODE_DIRECT_XIP
@@ -450,7 +459,7 @@ os_mgmt_bootloader_info(struct smp_streamer *ctxt)
 	zcbor_state_t *zsd = ctxt->reader->zs;
 	struct zcbor_string query = { 0 };
 	size_t decoded;
-	bool ok;
+	bool ok = true;
 	bool has_output = false;
 
 #if defined(CONFIG_MCUMGR_GRP_OS_BOOTLOADER_INFO_HOOK)
@@ -1053,6 +1062,7 @@ static int os_mgmt_translate_error_code(uint16_t err)
 
 	case OS_MGMT_ERR_QUERY_YIELDS_NO_ANSWER:
 	case OS_MGMT_ERR_RTC_NOT_SET:
+	case OS_MGMT_ERR_QUERY_RESPONSE_VALUE_NOT_VALID:
 		rc = MGMT_ERR_ENOENT;
 		break;
 

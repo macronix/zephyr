@@ -27,9 +27,9 @@ over time. It provides the following functionalities:
 
 .. note::
    It is planned to deprecate all APIs listed in :ref:`usb_api` and the
-   functions that depend on them between Zephyr v4.0.0 and v4.1.0, and remove
-   them in v4.3.0. The new USB device support, represented by the APIs in
-   :ref:`usb_device_next_api`, will become the default in Zephyr v4.1.0.
+   functions that depend on them between Zephyr v4.1.0 and v4.2.0, and remove
+   them in v4.4.0. The new USB device support, represented by the APIs in
+   :ref:`usb_device_next_api`, will become the default in Zephyr v4.2.0.
 
 Supported USB classes
 *********************
@@ -170,7 +170,7 @@ CDC ACM UART as backend for a subsystem or application:
 * ``zephyr,bt-c2h-uart`` used in Bluetooth,
   for example see :zephyr:code-sample:`bluetooth_hci_uart`
 * ``zephyr,ot-uart`` used in OpenThread,
-  for example see :zephyr:code-sample:`coprocessor`
+  for example see :zephyr:code-sample:`openthread-coprocessor`
 * ``zephyr,shell-uart`` used by shell for serial backend,
   for example see :zephyr_file:`samples/subsys/shell/shell_module`
 * ``zephyr,uart-mcumgr`` used by :zephyr:code-sample:`smp-svr` sample
@@ -391,61 +391,6 @@ BOS descriptor and handled by the stack.
 
 See :zephyr:code-sample:`webusb` sample for reference.
 
-Implementing a non-standard USB class
-*************************************
-
-The configuration of USB device is done in the stack layer.
-
-The following structures and callbacks need to be defined:
-
-* Part of USB Descriptor table
-* USB Endpoint configuration table
-* USB Device configuration structure
-* Endpoint callbacks
-* Optionally class, vendor and custom handlers
-
-For example, for the USB loopback application:
-
-.. literalinclude:: ../../../../subsys/usb/device/class/loopback.c
-   :language: c
-   :start-after: usb.rst config structure start
-   :end-before: usb.rst config structure end
-   :linenos:
-
-Endpoint configuration:
-
-.. literalinclude:: ../../../../subsys/usb/device/class/loopback.c
-   :language: c
-   :start-after: usb.rst endpoint configuration start
-   :end-before: usb.rst endpoint configuration end
-   :linenos:
-
-USB Device configuration structure:
-
-.. literalinclude:: ../../../../subsys/usb/device/class/loopback.c
-   :language: c
-   :start-after: usb.rst device config data start
-   :end-before: usb.rst device config data end
-   :linenos:
-
-
-The vendor device requests are forwarded by the USB stack core driver to the
-class driver through the registered vendor handler.
-
-For the loopback class driver, :c:func:`loopback_vendor_handler` processes
-the vendor requests:
-
-.. literalinclude:: ../../../../subsys/usb/device/class/loopback.c
-   :language: c
-   :start-after: usb.rst vendor handler start
-   :end-before:  usb.rst vendor handler end
-   :linenos:
-
-The class driver waits for the :makevar:`USB_DC_CONFIGURED` device status code
-before transmitting any data.
-
-.. _testing_USB_native_sim:
-
 Interface number and endpoint address assignment
 ************************************************
 
@@ -510,7 +455,9 @@ prevent you from implementing a hardware-clone firmware. Instead, if possible,
 the host driver implementation should be fixed to use values from the interface
 and endpoint descriptor.
 
-Testing over USPIP in native_sim
+.. _testing_USB_native_sim:
+
+Testing over USBIP in native_sim
 ********************************
 
 A virtual USB controller implemented through USBIP might be used to test the USB
@@ -596,7 +543,7 @@ The following Product IDs are currently used:
 +----------------------------------------------------+--------+
 | :zephyr:code-sample:`bluetooth_hci_usb`            | 0x000B |
 +----------------------------------------------------+--------+
-| :zephyr:code-sample:`bluetooth_hci_usb_h4`         | 0x000C |
+| Reserved (previously: bluetooth_hci_usb_h4)        | 0x000C |
 +----------------------------------------------------+--------+
 | Reserved (previously: wpan-usb)                    | 0x000D |
 +----------------------------------------------------+--------+

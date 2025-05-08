@@ -1,4 +1,5 @@
-/* Copyright (c) 2024 BayLibre SAS
+/* Copyright (c) 2018 Laczen
+ * Copyright (c) 2024 BayLibre SAS
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -722,6 +723,40 @@ static int zms_add_gc_done_ate(struct zms_fs *fs)
 	return zms_flash_ate_wrt(fs, &gc_done_ate);
 }
 
+/* This function verifies that the cycle_cnt of the close ATE will not be equal
+ * to the cycle_cnt of the empty ATE after incrementing it.
+ * This is possible only in these extreme conditions:
+ * 1- A Garbage collection operation is interrupted due to a power cut
+ * 2- When rebooting, the sector is erased (cycle_cnt incremented)
+ * 3- Garbage collection restarts again and got interrupted again by a power cut
+ * 4- Steps [2..3] occurred 255 times in a row
+ * At this point the sector that we should erase becomes closed.
+ */
+static inline int zms_verify_and_increment_cycle_cnt(struct zms_fs *fs, uint64_t addr,
+						     uint8_t *cycle_cnt)
+{
+	int rc;
+	uint64_t close_addr;
+	struct zms_ate close_ate;
+
+	close_addr = zms_close_ate_addr(fs, addr);
+	/* Read the second ate in the sector to get the close ATE */
+	rc = zms_flash_ate_rd(fs, close_addr, &close_ate);
+	if (rc < 0) {
+		return rc;
+	}
+
+	*cycle_cnt = (*cycle_cnt + 1) % BIT(8);
+	/* Verify that the close cycle_cnt is not equal to the incremented value.
+	 * If they are equal increment it again.
+	 */
+	if (close_ate.cycle_cnt == *cycle_cnt) {
+		*cycle_cnt = (*cycle_cnt + 1) % BIT(8);
+	}
+
+	return 0;
+}
+
 static int zms_add_empty_ate(struct zms_fs *fs, uint64_t addr)
 {
 	struct zms_ate empty_ate;
@@ -747,8 +782,12 @@ static int zms_add_empty_ate(struct zms_fs *fs, uint64_t addr)
 		return rc;
 	}
 
-	/* increase cycle counter */
-	empty_ate.cycle_cnt = (cycle_cnt + 1) % BIT(8);
+	/* Increase cycle counter */
+	rc = zms_verify_and_increment_cycle_cnt(fs, addr, &cycle_cnt);
+	if (rc < 0) {
+		return rc;
+	}
+	empty_ate.cycle_cnt = cycle_cnt;
 	zms_ate_crc8_update(&empty_ate);
 
 	/* Adding empty ate to this sector changes fs->ate_wra value
@@ -1101,7 +1140,7 @@ static int zms_init(struct zms_fs *fs)
 				/* Let's check that we support this ZMS version */
 				if (ZMS_GET_VERSION(empty_ate.metadata) != ZMS_DEFAULT_VERSION) {
 					LOG_ERR("ZMS Version is not supported");
-					rc = -ENOEXEC;
+					rc = -EPROTONOSUPPORT;
 					goto end;
 				}
 			}
@@ -1125,7 +1164,7 @@ static int zms_init(struct zms_fs *fs)
 	}
 	/* all sectors are closed, and zms magic number not found. This is not a zms fs */
 	if ((closed_sectors == fs->sector_count) && !zms_magic_exist) {
-		rc = -EDEADLK;
+		rc = -ENOTSUP;
 		goto end;
 	}
 	/* TODO: add a recovery mechanism here if the ZMS magic number exist but all
@@ -1157,7 +1196,7 @@ static int zms_init(struct zms_fs *fs)
 				/* Let's check the version */
 				if (ZMS_GET_VERSION(empty_ate.metadata) != ZMS_DEFAULT_VERSION) {
 					LOG_ERR("ZMS Version is not supported");
-					rc = -ENOEXEC;
+					rc = -EPROTONOSUPPORT;
 					goto end;
 				}
 			}
@@ -1258,6 +1297,7 @@ static int zms_init(struct zms_fs *fs)
 			}
 
 			if (zms_gc_done_ate_valid(fs, &gc_done_ate)) {
+				gc_done_marker = true;
 				break;
 			}
 			addr += fs->ate_size;
@@ -1362,8 +1402,9 @@ int zms_mount(struct zms_fs *fs)
 	 * 1 close ATE, 1 empty ATE, 1 GC done ATE, 1 Delete ATE, 1 ID/Value ATE
 	 */
 	if (fs->sector_size < ZMS_MIN_ATE_NUM * fs->ate_size) {
-		LOG_ERR("Invalid sector size, should be at least %u",
+		LOG_ERR("Invalid sector size, should be at least %zu",
 			ZMS_MIN_ATE_NUM * fs->ate_size);
+		return -EINVAL;
 	}
 
 	/* check the number of sectors, it should be at least 2 */
@@ -1392,12 +1433,10 @@ ssize_t zms_write(struct zms_fs *fs, uint32_t id, const void *data, size_t len)
 {
 	int rc;
 	size_t data_size;
-	struct zms_ate wlk_ate;
 	uint64_t wlk_addr;
 	uint64_t rd_addr;
 	uint32_t gc_count;
 	uint32_t required_space = 0U; /* no space, appropriate for delete ate */
-	int prev_found = 0;
 
 	if (!fs->ready) {
 		LOG_ERR("zms not initialized");
@@ -1428,15 +1467,14 @@ ssize_t zms_write(struct zms_fs *fs, uint32_t id, const void *data, size_t len)
 #endif
 	rd_addr = wlk_addr;
 
+#ifdef CONFIG_ZMS_NO_DOUBLE_WRITE
 	/* Search for a previous valid ATE with the same ID */
-	prev_found = zms_find_ate_with_id(fs, id, wlk_addr, fs->ate_wra, &wlk_ate, &rd_addr);
+	struct zms_ate wlk_ate;
+	int prev_found = zms_find_ate_with_id(fs, id, wlk_addr, fs->ate_wra, &wlk_ate, &rd_addr);
 	if (prev_found < 0) {
 		return prev_found;
 	}
 
-#ifdef CONFIG_ZMS_LOOKUP_CACHE
-no_cached_entry:
-#endif
 	if (prev_found) {
 		/* previous entry found */
 		if (len > ZMS_DATA_IN_ATE_SIZE) {
@@ -1473,7 +1511,11 @@ no_cached_entry:
 			return 0;
 		}
 	}
+#endif
 
+#ifdef CONFIG_ZMS_LOOKUP_CACHE
+no_cached_entry:
+#endif
 	/* calculate required space if the entry contains data */
 	if (data_size) {
 		/* Leave space for delete ate */

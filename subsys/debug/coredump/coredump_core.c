@@ -24,6 +24,10 @@ static struct coredump_backend_api
 extern struct coredump_backend_api coredump_backend_intel_adsp_mem_window;
 static struct coredump_backend_api
 	*backend_api = &coredump_backend_intel_adsp_mem_window;
+#elif defined(CONFIG_DEBUG_COREDUMP_BACKEND_IN_MEMORY)
+extern struct coredump_backend_api coredump_backend_in_memory;
+static struct coredump_backend_api
+	*backend_api = &coredump_backend_in_memory;
 #elif defined(CONFIG_DEBUG_COREDUMP_BACKEND_OTHER)
 extern struct coredump_backend_api coredump_backend_other;
 static struct coredump_backend_api
@@ -101,9 +105,7 @@ static void dump_thread(struct k_thread *thread)
 #if defined(CONFIG_COREDUMP_DEVICE)
 static void process_coredump_dev_memory(const struct device *dev)
 {
-	struct coredump_driver_api *api = (struct coredump_driver_api *)dev->api;
-
-	api->dump(dev);
+	DEVICE_API_GET(coredump, dev)->dump(dev);
 }
 #endif
 

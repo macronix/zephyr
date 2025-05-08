@@ -158,6 +158,13 @@ static void fill_buffer_mono(enum corner corner, uint8_t grey,
 	memset(buf, color, buf_size);
 }
 
+static inline void fill_buffer_l_8(enum corner corner, uint8_t grey, uint8_t *buf, size_t buf_size)
+{
+	for (size_t idx = 0; idx < buf_size; idx += 1) {
+		*(uint8_t *)(buf + idx) = grey;
+	}
+}
+
 static inline void fill_buffer_mono01(enum corner corner, uint8_t grey,
 				      uint8_t *buf, size_t buf_size)
 {
@@ -231,6 +238,10 @@ int main(void)
 		grey_scale_sleep = 100;
 	}
 
+	if (capabilities.screen_info & SCREEN_INFO_X_ALIGNMENT_WIDTH) {
+		rect_w = capabilities.x_resolution;
+	}
+
 	buf_size = rect_w * rect_h;
 
 	if (buf_size < (capabilities.x_resolution * h_step)) {
@@ -257,6 +268,10 @@ int main(void)
 		bg_color = 0xFFu;
 		fill_buffer_fnc = fill_buffer_bgr565;
 		buf_size *= 2;
+		break;
+	case PIXEL_FORMAT_L_8:
+		bg_color = 0xFFu;
+		fill_buffer_fnc = fill_buffer_l_8;
 		break;
 	case PIXEL_FORMAT_MONO01:
 		bg_color = 0xFFu;
@@ -349,13 +364,15 @@ int main(void)
 	x = 0;
 	y = capabilities.y_resolution - rect_h;
 
+	LOG_INF("Display starts");
 	while (1) {
 		fill_buffer_fnc(BOTTOM_LEFT, grey_count, buf, buf_size);
 		display_write(display_dev, x, y, &buf_desc, buf);
 		++grey_count;
 		k_msleep(grey_scale_sleep);
 #if CONFIG_TEST
-		if (grey_count >= 1024) {
+		if (grey_count >= 30) {
+			LOG_INF("Display sample test mode done %s", display_dev->name);
 			break;
 		}
 #endif

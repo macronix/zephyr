@@ -18,7 +18,9 @@
 #include <hal/nrf_lrcconf.h>
 #include <hal/nrf_spu.h>
 #include <hal/nrf_memconf.h>
+#include <hal/nrf_nfct.h>
 #include <soc/nrfx_coredep.h>
+#include <soc_lrcconf.h>
 #include <dmm.h>
 
 LOG_MODULE_REGISTER(soc, CONFIG_SOC_LOG_LEVEL);
@@ -28,6 +30,8 @@ LOG_MODULE_REGISTER(soc, CONFIG_SOC_LOG_LEVEL);
 #elif defined(NRF_RADIOCORE)
 #define HSFLL_NODE DT_NODELABEL(cpurad_hsfll)
 #endif
+
+sys_snode_t soc_node;
 
 #define FICR_ADDR_GET(node_id, name)                                           \
 	DT_REG_ADDR(DT_PHANDLE_BY_NAME(node_id, nordic_ficrs, name)) +         \
@@ -52,13 +56,9 @@ static void power_domain_init(void)
 	 *  WFI the power domain will be correctly retained.
 	 */
 
-	nrf_lrcconf_poweron_force_set(NRF_LRCCONF010, NRF_LRCCONF_POWER_DOMAIN_0,
-				      !IS_ENABLED(CONFIG_SOC_NRF54H20_CPURAD));
-	nrf_lrcconf_poweron_force_set(NRF_LRCCONF010, NRF_LRCCONF_POWER_MAIN,
-				      !IS_ENABLED(CONFIG_SOC_NRF54H20_CPURAD));
+	soc_lrcconf_poweron_request(&soc_node, NRF_LRCCONF_POWER_DOMAIN_0);
+	nrf_lrcconf_poweron_force_set(NRF_LRCCONF010, NRF_LRCCONF_POWER_MAIN, false);
 
-	nrf_lrcconf_retain_set(NRF_LRCCONF010, NRF_LRCCONF_POWER_MAIN, true);
-	nrf_lrcconf_retain_set(NRF_LRCCONF010, NRF_LRCCONF_POWER_DOMAIN_0, true);
 	nrf_memconf_ramblock_ret_enable_set(NRF_MEMCONF, 0, RAMBLOCK_RET_BIT_ICACHE, false);
 	nrf_memconf_ramblock_ret_enable_set(NRF_MEMCONF, 0, RAMBLOCK_RET_BIT_DCACHE, false);
 	nrf_memconf_ramblock_ret_enable_set(NRF_MEMCONF, 1, RAMBLOCK_RET_BIT_ICACHE, false);
@@ -122,7 +122,6 @@ bool z_arm_on_enter_cpu_idle(void)
 #ifdef CONFIG_LOG_FRONTEND_STMESP
 	log_frontend_stmesp_pre_sleep();
 #endif
-
 	return true;
 }
 #endif
@@ -152,6 +151,11 @@ static int nordicsemi_nrf54h_init(void)
 
 	nrf_spu_periph_perm_dmasec_set(spu, nrf_address_slave_get(ccm030_addr), true);
 #endif
+
+	if (DT_NODE_HAS_STATUS(DT_NODELABEL(nfct), disabled) &&
+	    DT_PROP_OR(DT_NODELABEL(nfct), nfct_pins_as_gpios, 0)) {
+		nrf_nfct_pad_config_enable_set(NRF_NFCT, false);
+	}
 
 	return 0;
 }

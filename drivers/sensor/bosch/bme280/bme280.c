@@ -33,6 +33,13 @@ LOG_MODULE_REGISTER(BME280, CONFIG_SENSOR_LOG_LEVEL);
  */
 #define BME280_MEASUREMENT_TIMEOUT_MS 150
 
+/* Equation 9.1, with the fractional parts rounded down */
+#define BME280_EXPECTED_SAMPLE_TIME_MS                                                             \
+	1 + BME280_TEMP_SAMPLE_TIME + BME280_PRESS_SAMPLE_TIME + BME280_HUMIDITY_SAMPLE_TIME
+
+BUILD_ASSERT(BME280_EXPECTED_SAMPLE_TIME_MS < BME280_MEASUREMENT_TIMEOUT_MS,
+	     "Expected duration over timeout duration");
+
 struct bme280_config {
 	union bme280_bus bus;
 	const struct bme280_bus_io *bus_io;
@@ -119,6 +126,7 @@ static uint32_t bme280_compensate_humidity(struct bme280_data *data,
 	h = (h - (((((h >> 15) * (h >> 15)) >> 7) *
 		((int32_t)data->dig_h1)) >> 4));
 	h = (h > 419430400 ? 419430400 : h);
+	h = (h < 0 ? 0 : h);
 
 	return (uint32_t)(h >> 12);
 }
@@ -154,28 +162,25 @@ int bme280_sample_fetch_helper(const struct device *dev,
 	struct bme280_data *dev_data = dev->data;
 	uint8_t buf[8];
 	int32_t adc_press, adc_temp, adc_humidity;
+	uint32_t poll_timeout;
 	int size = 6;
 	int ret;
 
 	__ASSERT_NO_MSG(chan == SENSOR_CHAN_ALL);
-
-#ifdef CONFIG_PM_DEVICE
-	enum pm_device_state state;
-	(void)pm_device_state_get(dev, &state);
-	/* Do not allow sample fetching from suspended state */
-	if (state == PM_DEVICE_STATE_SUSPENDED) {
-		return -EIO;
-	}
-#endif
 
 #ifdef CONFIG_BME280_MODE_FORCED
 	ret = bme280_reg_write(dev, BME280_REG_CTRL_MEAS, BME280_CTRL_MEAS_VAL);
 	if (ret < 0) {
 		return ret;
 	}
+	/* Wait until the expected measurement time elapses */
+	k_sleep(K_MSEC(BME280_EXPECTED_SAMPLE_TIME_MS));
+	poll_timeout = BME280_MEASUREMENT_TIMEOUT_MS - BME280_EXPECTED_SAMPLE_TIME_MS;
+#else
+	poll_timeout = BME280_MEASUREMENT_TIMEOUT_MS;
 #endif
 
-	ret = bme280_wait_until_ready(dev, K_MSEC(BME280_MEASUREMENT_TIMEOUT_MS));
+	ret = bme280_wait_until_ready(dev, K_MSEC(poll_timeout));
 	if (ret < 0) {
 		return ret;
 	}
@@ -254,7 +259,7 @@ static int bme280_channel_get(const struct device *dev,
 	return 0;
 }
 
-static const struct sensor_driver_api bme280_api_funcs = {
+static DEVICE_API(sensor, bme280_api_funcs) = {
 	.sample_fetch = bme280_sample_fetch,
 	.channel_get = bme280_channel_get,
 #ifdef CONFIG_SENSOR_ASYNC_API

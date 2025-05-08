@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include "posix_clock.h"
 #include "posix_internal.h"
 
 #include <zephyr/init.h>
@@ -27,9 +28,8 @@ struct posix_rwlockattr {
 	bool pshared: 1;
 };
 
-int64_t timespec_to_timeoutms(const struct timespec *abstime);
-static uint32_t read_lock_acquire(struct posix_rwlock *rwl, int32_t timeout);
-static uint32_t write_lock_acquire(struct posix_rwlock *rwl, int32_t timeout);
+static uint32_t read_lock_acquire(struct posix_rwlock *rwl, uint32_t timeout);
+static uint32_t write_lock_acquire(struct posix_rwlock *rwl, uint32_t timeout);
 
 LOG_MODULE_REGISTER(pthread_rwlock, CONFIG_PTHREAD_RWLOCK_LOG_LEVEL);
 
@@ -198,22 +198,20 @@ int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock)
 int pthread_rwlock_timedrdlock(pthread_rwlock_t *rwlock,
 			       const struct timespec *abstime)
 {
-	int32_t timeout;
 	uint32_t ret = 0U;
 	struct posix_rwlock *rwl;
 
-	if (abstime->tv_nsec < 0 || abstime->tv_nsec > NSEC_PER_SEC) {
+	if ((abstime == NULL) || !timespec_is_valid(abstime)) {
+		LOG_DBG("%s is invalid", "abstime");
 		return EINVAL;
 	}
-
-	timeout = (int32_t) timespec_to_timeoutms(abstime);
 
 	rwl = get_posix_rwlock(*rwlock);
 	if (rwl == NULL) {
 		return EINVAL;
 	}
 
-	if (read_lock_acquire(rwl, timeout) != 0U) {
+	if (read_lock_acquire(rwl, timespec_to_timeoutms(CLOCK_REALTIME, abstime)) != 0U) {
 		ret = ETIMEDOUT;
 	}
 
@@ -271,22 +269,20 @@ int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock)
 int pthread_rwlock_timedwrlock(pthread_rwlock_t *rwlock,
 			       const struct timespec *abstime)
 {
-	int32_t timeout;
 	uint32_t ret = 0U;
 	struct posix_rwlock *rwl;
 
-	if (abstime->tv_nsec < 0 || abstime->tv_nsec > NSEC_PER_SEC) {
+	if ((abstime == NULL) || !timespec_is_valid(abstime)) {
+		LOG_DBG("%s is invalid", "abstime");
 		return EINVAL;
 	}
-
-	timeout = (int32_t) timespec_to_timeoutms(abstime);
 
 	rwl = get_posix_rwlock(*rwlock);
 	if (rwl == NULL) {
 		return EINVAL;
 	}
 
-	if (write_lock_acquire(rwl, timeout) != 0U) {
+	if (write_lock_acquire(rwl, timespec_to_timeoutms(CLOCK_REALTIME, abstime)) != 0U) {
 		ret = ETIMEDOUT;
 	}
 
@@ -331,28 +327,28 @@ int pthread_rwlock_unlock(pthread_rwlock_t *rwlock)
 	if (k_current_get() == rwl->wr_owner) {
 		/* Write unlock */
 		rwl->wr_owner = NULL;
-		sys_sem_give(&rwl->reader_active);
-		sys_sem_give(&rwl->wr_sem);
+		(void)sys_sem_give(&rwl->reader_active);
+		(void)sys_sem_give(&rwl->wr_sem);
 	} else {
 		/* Read unlock */
-		sys_sem_give(&rwl->rd_sem);
+		(void)sys_sem_give(&rwl->rd_sem);
 
 		if (sys_sem_count_get(&rwl->rd_sem) == CONCURRENT_READER_LIMIT) {
 			/* Last read lock, unlock writer */
-			sys_sem_give(&rwl->reader_active);
+			(void)sys_sem_give(&rwl->reader_active);
 		}
 	}
 	return 0;
 }
 
-static uint32_t read_lock_acquire(struct posix_rwlock *rwl, int32_t timeout)
+static uint32_t read_lock_acquire(struct posix_rwlock *rwl, uint32_t timeout)
 {
 	uint32_t ret = 0U;
 
 	if (sys_sem_take(&rwl->wr_sem, SYS_TIMEOUT_MS(timeout)) == 0) {
-		sys_sem_take(&rwl->reader_active, K_NO_WAIT);
-		sys_sem_take(&rwl->rd_sem, K_NO_WAIT);
-		sys_sem_give(&rwl->wr_sem);
+		(void)sys_sem_take(&rwl->reader_active, K_NO_WAIT);
+		(void)sys_sem_take(&rwl->rd_sem, K_NO_WAIT);
+		(void)sys_sem_give(&rwl->wr_sem);
 	} else {
 		ret = EBUSY;
 	}
@@ -360,7 +356,7 @@ static uint32_t read_lock_acquire(struct posix_rwlock *rwl, int32_t timeout)
 	return ret;
 }
 
-static uint32_t write_lock_acquire(struct posix_rwlock *rwl, int32_t timeout)
+static uint32_t write_lock_acquire(struct posix_rwlock *rwl, uint32_t timeout)
 {
 	uint32_t ret = 0U;
 	int64_t elapsed_time, st_time = k_uptime_get();
@@ -383,7 +379,7 @@ static uint32_t write_lock_acquire(struct posix_rwlock *rwl, int32_t timeout)
 		if (sys_sem_take(&rwl->reader_active, k_timeout) == 0) {
 			rwl->wr_owner = k_current_get();
 		} else {
-			sys_sem_give(&rwl->wr_sem);
+			(void)sys_sem_give(&rwl->wr_sem);
 			ret = EBUSY;
 		}
 

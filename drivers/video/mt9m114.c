@@ -12,7 +12,11 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/drivers/video.h>
+#include <zephyr/drivers/video-controls.h>
 #include <zephyr/drivers/i2c.h>
+
+#include "video_ctrls.h"
+#include "video_device.h"
 
 LOG_MODULE_REGISTER(video_mt9m114, CONFIG_VIDEO_LOG_LEVEL);
 
@@ -31,6 +35,7 @@ LOG_MODULE_REGISTER(video_mt9m114, CONFIG_VIDEO_LOG_LEVEL);
 #define MT9M114_CAM_SENSOR_CFG_Y_ADDR_END       0xC804
 #define MT9M114_CAM_SENSOR_CFG_X_ADDR_END       0xC806
 #define MT9M114_CAM_SENSOR_CFG_CPIPE_LAST_ROW   0xC818
+#define MT9M114_CAM_SENSOR_CTRL_READ_MODE       0xC834
 #define MT9M114_CAM_CROP_WINDOW_WIDTH           0xC858
 #define MT9M114_CAM_CROP_WINDOW_HEIGHT          0xC85A
 #define MT9M114_CAM_OUTPUT_WIDTH                0xC868
@@ -53,11 +58,21 @@ LOG_MODULE_REGISTER(video_mt9m114, CONFIG_VIDEO_LOG_LEVEL);
 #define MT9M114_CAM_OUTPUT_FORMAT_FORMAT_YUV (0 << 8)
 #define MT9M114_CAM_OUTPUT_FORMAT_FORMAT_RGB (1 << 8)
 
+/* Camera control masks */
+#define MT9M114_CAM_SENSOR_CTRL_HORZ_FLIP_EN BIT(0)
+#define MT9M114_CAM_SENSOR_CTRL_VERT_FLIP_EN BIT(1)
+
 struct mt9m114_config {
 	struct i2c_dt_spec i2c;
 };
 
+struct mt9m114_ctrls {
+	struct video_ctrl hflip;
+	struct video_ctrl vflip;
+};
+
 struct mt9m114_data {
+	struct mt9m114_ctrls ctrls;
 	struct video_format fmt;
 };
 
@@ -261,12 +276,13 @@ static int mt9m114_read_reg(const struct device *dev, uint16_t reg_addr, uint8_t
 	return 0;
 }
 
-static int mt9m114_modify_reg(const struct device *dev, const uint16_t addr, const uint8_t mask,
-			      const uint8_t val)
+static int mt9m114_modify_reg(const struct device *dev, const uint16_t addr,
+			      uint8_t reg_size, const uint32_t mask, const uint32_t val)
 {
-	uint8_t oldVal;
-	uint8_t newVal;
-	int ret = mt9m114_read_reg(dev, addr, sizeof(oldVal), &oldVal);
+	uint32_t oldVal = 0;
+	uint32_t newVal = 0;
+
+	int ret = mt9m114_read_reg(dev, addr, reg_size, &oldVal);
 
 	if (ret) {
 		return ret;
@@ -274,7 +290,7 @@ static int mt9m114_modify_reg(const struct device *dev, const uint16_t addr, con
 
 	newVal = (oldVal & ~mask) | (val & mask);
 
-	return mt9m114_write_reg(dev, addr, sizeof(newVal), &newVal);
+	return mt9m114_write_reg(dev, addr, reg_size, &newVal);
 }
 
 static int mt9m114_write_all(const struct device *dev, struct mt9m114_reg *reg)
@@ -297,7 +313,7 @@ static int mt9m114_write_all(const struct device *dev, struct mt9m114_reg *reg)
 
 static int mt9m114_software_reset(const struct device *dev)
 {
-	int ret = mt9m114_modify_reg(dev, MT9M114_RST_AND_MISC_CONTROL, 0x01, 0x01);
+	int ret = mt9m114_modify_reg(dev, MT9M114_RST_AND_MISC_CONTROL, 2, 0x01, 0x01);
 
 	if (ret) {
 		return ret;
@@ -305,7 +321,7 @@ static int mt9m114_software_reset(const struct device *dev)
 
 	k_sleep(K_MSEC(1));
 
-	ret = mt9m114_modify_reg(dev, MT9M114_RST_AND_MISC_CONTROL, 0x01, 0x00);
+	ret = mt9m114_modify_reg(dev, MT9M114_RST_AND_MISC_CONTROL, 2, 0x01, 0x00);
 	if (ret) {
 		return ret;
 	}
@@ -444,14 +460,10 @@ static int mt9m114_get_fmt(const struct device *dev, enum video_endpoint_id ep,
 	return 0;
 }
 
-static int mt9m114_stream_start(const struct device *dev)
+static int mt9m114_set_stream(const struct device *dev, bool enable)
 {
-	return mt9m114_set_state(dev, MT9M114_SYS_STATE_START_STREAMING);
-}
-
-static int mt9m114_stream_stop(const struct device *dev)
-{
-	return mt9m114_set_state(dev, MT9M114_SYS_STATE_ENTER_SUSPEND);
+	return enable ? mt9m114_set_state(dev, MT9M114_SYS_STATE_START_STREAMING)
+		      : mt9m114_set_state(dev, MT9M114_SYS_STATE_ENTER_SUSPEND);
 }
 
 static int mt9m114_get_caps(const struct device *dev, enum video_endpoint_id ep,
@@ -461,13 +473,59 @@ static int mt9m114_get_caps(const struct device *dev, enum video_endpoint_id ep,
 	return 0;
 }
 
-static const struct video_driver_api mt9m114_driver_api = {
+static int mt9m114_set_ctrl(const struct device *dev, uint32_t id)
+{
+	int ret = 0;
+	struct mt9m114_data *drv_data = dev->data;
+
+	switch (id) {
+	case VIDEO_CID_HFLIP:
+		ret = mt9m114_modify_reg(
+			dev, MT9M114_CAM_SENSOR_CTRL_READ_MODE, 2,
+			MT9M114_CAM_SENSOR_CTRL_HORZ_FLIP_EN,
+			drv_data->ctrls.hflip.val ? MT9M114_CAM_SENSOR_CTRL_HORZ_FLIP_EN : 0);
+		break;
+	case VIDEO_CID_VFLIP:
+		ret = mt9m114_modify_reg(
+			dev, MT9M114_CAM_SENSOR_CTRL_READ_MODE, 2,
+			MT9M114_CAM_SENSOR_CTRL_VERT_FLIP_EN,
+			drv_data->ctrls.vflip.val ? MT9M114_CAM_SENSOR_CTRL_VERT_FLIP_EN : 0);
+		break;
+	default:
+		return -ENOTSUP;
+	}
+
+	if (ret < 0) {
+		return ret;
+	}
+
+	/* Apply Config */
+	return mt9m114_set_state(dev, MT9M114_SYS_STATE_ENTER_CONFIG_CHANGE);
+}
+
+static DEVICE_API(video, mt9m114_driver_api) = {
 	.set_format = mt9m114_set_fmt,
 	.get_format = mt9m114_get_fmt,
 	.get_caps = mt9m114_get_caps,
-	.stream_start = mt9m114_stream_start,
-	.stream_stop = mt9m114_stream_stop,
+	.set_stream = mt9m114_set_stream,
+	.set_ctrl = mt9m114_set_ctrl,
 };
+
+static int mt9m114_init_controls(const struct device *dev)
+{
+	int ret;
+	struct mt9m114_data *drv_data = dev->data;
+	struct mt9m114_ctrls *ctrls = &drv_data->ctrls;
+
+	ret = video_init_ctrl(&ctrls->hflip, dev, VIDEO_CID_HFLIP,
+			      (struct video_ctrl_range){.min = 0, .max = 1, .step = 1, .def = 0});
+	if (ret) {
+		return ret;
+	}
+
+	return video_init_ctrl(&ctrls->vflip, dev, VIDEO_CID_VFLIP,
+			       (struct video_ctrl_range){.min = 0, .max = 1, .step = 1, .def = 0});
+}
 
 static int mt9m114_init(const struct device *dev)
 {
@@ -514,7 +572,8 @@ static int mt9m114_init(const struct device *dev)
 	/* Suspend any stream */
 	mt9m114_set_state(dev, MT9M114_SYS_STATE_ENTER_SUSPEND);
 
-	return 0;
+	/* Initialize controls */
+	return mt9m114_init_controls(dev);
 }
 
 #if 1 /* Unique Instance */
@@ -539,4 +598,7 @@ static int mt9m114_init_0(const struct device *dev)
 
 DEVICE_DT_INST_DEFINE(0, &mt9m114_init_0, NULL, &mt9m114_data_0, &mt9m114_cfg_0, POST_KERNEL,
 		      CONFIG_VIDEO_INIT_PRIORITY, &mt9m114_driver_api);
+
+VIDEO_DEVICE_DEFINE(mt9m114, DEVICE_DT_INST_GET(0), NULL);
+
 #endif

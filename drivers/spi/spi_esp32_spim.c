@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Espressif Systems (Shanghai) Co., Ltd.
+ * Copyright (c) 2020-2025 Espressif Systems (Shanghai) Co., Ltd.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -17,13 +17,7 @@ LOG_MODULE_REGISTER(esp32_spi, CONFIG_SPI_LOG_LEVEL);
 #include <soc.h>
 #include <esp_memory_utils.h>
 #include <zephyr/drivers/spi.h>
-#include <zephyr/drivers/spi/rtio.h>
-#if defined(CONFIG_SOC_SERIES_ESP32C2) || defined(CONFIG_SOC_SERIES_ESP32C3) ||                    \
-	defined(CONFIG_SOC_SERIES_ESP32C6)
-#include <zephyr/drivers/interrupt_controller/intc_esp32c3.h>
-#else
 #include <zephyr/drivers/interrupt_controller/intc_esp32.h>
-#endif
 #ifdef SOC_GDMA_SUPPORTED
 #include <hal/gdma_hal.h>
 #include <hal/gdma_ll.h>
@@ -31,13 +25,6 @@ LOG_MODULE_REGISTER(esp32_spi, CONFIG_SPI_LOG_LEVEL);
 #include <zephyr/drivers/clock_control.h>
 #include "spi_context.h"
 #include "spi_esp32_spim.h"
-
-#if defined(CONFIG_SOC_SERIES_ESP32C2) || defined(CONFIG_SOC_SERIES_ESP32C3) ||                    \
-	defined(CONFIG_SOC_SERIES_ESP32C6)
-#define ISR_HANDLER isr_handler_t
-#else
-#define ISR_HANDLER intr_handler_t
-#endif
 
 #define SPI_DMA_MAX_BUFFER_SIZE 4092
 
@@ -250,7 +237,7 @@ static int spi_esp32_init(const struct device *dev)
 	err = esp_intr_alloc(cfg->irq_source,
 			ESP_PRIO_TO_FLAGS(cfg->irq_priority) |
 			ESP_INT_FLAGS_CHECK(cfg->irq_flags) | ESP_INTR_FLAG_IRAM,
-			(ISR_HANDLER)spi_esp32_isr,
+			(intr_handler_t)spi_esp32_isr,
 			(void *)dev,
 			NULL);
 
@@ -500,7 +487,7 @@ static int spi_esp32_release(const struct device *dev,
 	return 0;
 }
 
-static const struct spi_driver_api spi_api = {
+static DEVICE_API(spi, spi_api) = {
 	.transceive = spi_esp32_transceive,
 #ifdef CONFIG_SPI_ASYNC
 	.transceive_async = spi_esp32_transceive_async,
@@ -559,7 +546,7 @@ static const struct spi_driver_api spi_api = {
 		.clock_source = SPI_CLK_SRC_DEFAULT,	\
 	};	\
 		\
-	DEVICE_DT_INST_DEFINE(idx, spi_esp32_init,	\
+	SPI_DEVICE_DT_INST_DEFINE(idx, spi_esp32_init,	\
 			      NULL, &spi_data_##idx,	\
 			      &spi_config_##idx, POST_KERNEL,	\
 			      CONFIG_SPI_INIT_PRIORITY, &spi_api);

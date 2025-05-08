@@ -6,6 +6,7 @@
 '''Common code used by commands which execute runners.
 '''
 
+import importlib.util
 import re
 import argparse
 import logging
@@ -28,7 +29,8 @@ from runners.core import FileType
 from runners.core import BuildConfiguration
 import yaml
 
-from zephyr_ext_common import ZEPHYR_SCRIPTS
+import zephyr_module
+from zephyr_ext_common import ZEPHYR_BASE, ZEPHYR_SCRIPTS
 
 # Runners depend on edtlib. Make sure the copy in the tree is
 # available to them before trying to import any.
@@ -106,6 +108,13 @@ class SocBoardFilesProcessing:
     board: bool = False
     priority: int = IGNORED_RUN_ONCE_PRIORITY
     yaml: object = None
+
+def import_from_path(module_name, file_path):
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
 
 def command_verb(command):
     return "flash" if command.name == "flash" else "debug"
@@ -196,6 +205,14 @@ def do_run_common(command, user_args, user_runner_args, domain_file=None):
     if user_args.context:
         dump_context(command, user_args, user_runner_args)
         return
+
+    # Import external module runners
+    for module in zephyr_module.parse_modules(ZEPHYR_BASE, command.manifest):
+        runners_ext = module.meta.get("runners", [])
+        for runner in runners_ext:
+            import_from_path(
+                module.meta.get("name", "runners_ext"), Path(module.project) / runner["file"]
+            )
 
     build_dir = get_build_dir(user_args)
     if not user_args.skip_rebuild:
@@ -394,11 +411,17 @@ def do_run_common_image(command, user_args, user_runner_args, used_cmds,
 
             i = i - 1
 
+    # Arguments in this order to allow specific to override general:
+    #
+    # - runner-specific runners.yaml arguments
+    # - user-provided command line arguments
+    final_argv = runners_yaml['args'][runner_name] + runner_args
+
     # If flashing multiple images, the runner supports reset after flashing and
     # the board has enabled this functionality, check if the board should be
     # reset or not. If this is not specified in the board/soc file, leave it up to
     # the runner's default configuration to decide if a reset should occur.
-    if runner_cls.capabilities().reset:
+    if runner_cls.capabilities().reset and '--no-reset' not in final_argv:
         if board_image_count is not None:
             reset = True
 
@@ -432,15 +455,9 @@ def do_run_common_image(command, user_args, user_runner_args, used_cmds,
                                         break
 
             if reset:
-                runner_args.append('--reset')
+                final_argv.append('--reset')
             else:
-                runner_args.append('--no-reset')
-
-    # Arguments in this order to allow specific to override general:
-    #
-    # - runner-specific runners.yaml arguments
-    # - user-provided command line arguments
-    final_argv = runners_yaml['args'][runner_name] + runner_args
+                final_argv.append('--no-reset')
 
     # 'user_args' contains parsed arguments which are:
     #
@@ -655,6 +672,7 @@ def get_runner_config(build_dir, yaml_path, runners_yaml, args=None):
                         output_file('hex'),
                         output_file('bin'),
                         output_file('uf2'),
+                        output_file('mot'),
                         config('file'),
                         filetype('file_type'),
                         config('gdb'),

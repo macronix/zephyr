@@ -23,63 +23,11 @@ Hardware
 Supported Features
 ==================
 
-+-----------+------------+-----------------------------------+
-| Interface | Controller | Driver/Component                  |
-+===========+============+===================================+
-| NVIC      | on-chip    | nested vector interrupt controller|
-+-----------+------------+-----------------------------------+
-| SYSTICK   | on-chip    | systick                           |
-+-----------+------------+-----------------------------------+
-| MCI_IOMUX | on-chip    | pinmux                            |
-+-----------+------------+-----------------------------------+
-| GPIO      | on-chip    | gpio                              |
-+-----------+------------+-----------------------------------+
-| USART     | on-chip    | serial                            |
-+-----------+------------+-----------------------------------+
-| DMA       | on-chip    | dma                               |
-+-----------+------------+-----------------------------------+
-| SPI       | on-chip    | spi                               |
-+-----------+------------+-----------------------------------+
-| I2C       | on-chip    | i2c                               |
-+-----------+------------+-----------------------------------+
-| FLEXSPI   | on-chip    | flash/memc                        |
-+-----------+------------+-----------------------------------+
-| TRNG      | on-chip    | entropy                           |
-+-----------+------------+-----------------------------------+
-| DMIC      | on-chip    | dmic                              |
-+-----------+------------+-----------------------------------+
-| LCDIC     | on-chip    | mipi-dbi                          |
-+-----------+------------+-----------------------------------+
-| WWDT      | on-chip    | watchdog                          |
-+-----------+------------+-----------------------------------+
-| USBOTG    | on-chip    | usb                               |
-+-----------+------------+-----------------------------------+
-| CTIMER    | on-chip    | counter                           |
-+-----------+------------+-----------------------------------+
-| SCTIMER   | on-chip    | pwm                               |
-+-----------+------------+-----------------------------------+
-| MRT       | on-chip    | counter                           |
-+-----------+------------+-----------------------------------+
-| OS_TIMER  | on-chip    | os timer                          |
-+-----------+------------+-----------------------------------+
-| PM        | on-chip    | power management; uses SoC Power  |
-|           |            | Modes 1 and 2                     |
-+-----------+------------+-----------------------------------+
-| BLE       | on-chip    | Bluetooth                         |
-+-----------+------------+-----------------------------------+
-| ADC       | on-chip    | adc                               |
-+-----------+------------+-----------------------------------+
-| DAC       | on-chip    | dac                               |
-+-----------+------------+-----------------------------------+
-| ENET      | on-chip    | ethernet                          |
-+-----------+------------+-----------------------------------+
+.. zephyr:board-supported-hw::
 
-The default configuration can be found in the defconfig file:
+.. note::
 
-   :zephyr_file:`boards/nxp/rd_rw612_bga/rd_rw612_bga_defconfig/`
-
-Other hardware features are not currently supported
-
+   Power modes 1, 2 and 3 are supported when using System Power Management.
 
 Display Support
 ***************
@@ -136,7 +84,7 @@ display sample can be built for the module like so:
 Fetch Binary Blobs
 ******************
 
-To support Bluetooth, rd_rw612_bga requires fetching binary blobs, which can be
+To support Bluetooth or Wi-Fi, rd_rw612_bga requires fetching binary blobs, which can be
 achieved by running the following command:
 
 .. code-block:: console
@@ -145,6 +93,8 @@ achieved by running the following command:
 
 Programming and Debugging
 *************************
+
+.. zephyr:board-supported-runners::
 
 Build and flash applications as usual (see :ref:`build_an_application` and
 :ref:`application_run` for more details).
@@ -214,6 +164,16 @@ rd_rw612_bga platform supports the monolithic feature. The required binary blob
 ``<zephyr workspace>/modules/hal/nxp/zephyr/blobs/rw61x_sb_ble_a2.bin`` will be linked
 with the application image directly, forming one single monolithic image.
 
+Wi-Fi
+*****
+
+Wi-Fi functionality requires to fetch binary blobs, so make sure to follow
+the ``Fetch Binary Blobs`` section first.
+
+rd_rw612_bga platform supports the monolithic feature. The required binary blob
+``<zephyr workspace>/modules/hal/nxp/zephyr/blobs/rw61x_sb_wifi_a2.bin`` will be linked
+with the application image directly, forming one single monolithic image.
+
 Board variants
 **************
 
@@ -244,6 +204,9 @@ Remove resistors:
 - R505
 
 Then, build for the board target ``rd_rw612_bga//ethernet``.
+
+.. include:: ../../common/board-footer.rst
+   :start-after: nxp-board-footer
 
 Resources
 *********

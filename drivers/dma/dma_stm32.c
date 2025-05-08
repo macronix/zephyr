@@ -686,7 +686,7 @@ DMA_STM32_EXPORT_API int dma_stm32_get_status(const struct device *dev,
 	return 0;
 }
 
-static const struct dma_driver_api dma_funcs = {
+static DEVICE_API(dma, dma_funcs) = {
 	.reload		 = dma_stm32_reload,
 	.config		 = dma_stm32_configure,
 	.start		 = dma_stm32_start,
@@ -715,7 +715,7 @@ static struct dma_stm32_data dma_stm32_data_##index = {			\
 };									\
 									\
 DEVICE_DT_INST_DEFINE(index,						\
-		    &dma_stm32_init,					\
+		    dma_stm32_init,					\
 		    NULL,						\
 		    &dma_stm32_data_##index, &dma_stm32_config_##index,	\
 		    PRE_KERNEL_1, CONFIG_DMA_INIT_PRIORITY,		\
