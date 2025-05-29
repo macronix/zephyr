@@ -4,28 +4,25 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-
  &spi0{
 	status = "okay";
 	clock-frequency = <50000000>;
 	zephyr,deferred-init;
-
-	mx25r6435f: spi_nor_flash@0 {
-		compatible = "jedec,spi-nor";
+	mx25r6435f: mx25r6435f@0 {
+		compatible = "jedec,mspi-nor";
 		reg = <0>;
 		jedec-id = [c2 80 3C];
 		size = <67108864>;
-		spi-max-frequency = <500000>;
+		t-enter-dpd = <10000>;
+		t-exit-dpd = <30000>;
+		mspi-max-frequency = <50000000>;
+		mspi-io-mode = "MSPI_IO_MODE_OCTAL";
+		mspi-data-rate = "MSPI_DATA_RATE_SINGLE";
+		mspi-hardware-ce-num = <1>;
+		mspi-cpp-mode = "MSPI_CPP_MODE_0";
+		mspi-endian = "MSPI_BIG_ENDIAN";
+		mspi-ce-polarity = "MSPI_CE_ACTIVE_LOW";
 		status = "okay";
-		t-enter-dpd = <3000>;
-		t-exit-dpd = <40000>;
-		sfdp-bfp = [
-			e5 20 f3 ff  ff ff ff 0f  44 eb 08 6b  08 3b 42 bb
-			ee ff ff ff  ff ff 00 ff  ff ff 00 ff  0c 20 0f 52
-			10 d8 00 ff  44 7a c9 fe  83 67 26 62  ec 82 18 44
-			7a 75 7a 75  04 c4 d5 5c  00 06 74 00  08 50 00 01
-		];
-
 		zephyr,deferred-init;
 	};
 };

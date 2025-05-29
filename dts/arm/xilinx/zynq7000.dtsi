@@ -107,7 +107,7 @@
 			#size-cells = <0>;
 			status = "disabled";
 			reg = <0x43a00000 0x10000>;
-			compatible = "xlnx,mxic-uefc-spi";
+			compatible = "xlnx,mspi-controller";
 		};
 
 		uart0: uart@e0000000 {
