@@ -730,12 +730,12 @@ static int drv_init(const struct device *dev)
 	const struct flash_mspi_nor_config *dev_config = dev->config;
 	struct flash_mspi_nor_data *dev_data = dev->data;
 	int rc;
-
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	if (!device_is_ready(dev_config->bus)) {
 		LOG_ERR("Device %s is not ready", dev_config->bus->name);
 		return -ENODEV;
 	}
-
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	rc = pm_device_runtime_get(dev_config->bus);
 	if (rc < 0) {
 		LOG_ERR("pm_device_runtime_get() failed: %d", rc);
@@ -743,7 +743,7 @@ static int drv_init(const struct device *dev)
 	}
 
 	rc = flash_chip_init(dev);
-
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	/* Release the MSPI controller - it was acquired by the call to
 	 * mspi_dev_config() in flash_chip_init().
 	 */
@@ -754,7 +754,7 @@ static int drv_init(const struct device *dev)
 	if (rc < 0) {
 		return rc;
 	}
-
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	k_sem_init(&dev_data->acquired, 1, K_SEM_MAX_LIMIT);
 
 	return pm_device_driver_init(dev, dev_pm_action_cb);

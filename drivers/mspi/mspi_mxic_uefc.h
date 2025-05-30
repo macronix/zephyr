@@ -1,36 +1,20 @@
 /*
- * Copyright (c) 2021 Telink Semiconductor
+ * Copyright (c) 2024, Ambiq Micro Inc. <www.ambiq.com>
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#define DT_DRV_COMPAT xlnx_mxic_uefc_spi
-#include <zephyr/drivers/spi.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/logging/log_instance.h>
+#include <zephyr/kernel.h>
+#include <zephyr/sys/util.h>
+#include <zephyr/pm/device.h>
 #include <zephyr/drivers/pinctrl.h>
-
-/*
-		spi0: spi@43a00000 {
-			compatible = "xlnx,mxic-uefc-spi";
-			status = "okay";
-
-			reg = <0x43a00000 0x10000>;
-
-			flash@0 {
-				compatible = "jedec,spi-nor";
-				status = "okay";
-			};
-		};
-
-
-			mx25r6435f: spi_nor_flash@0 {
-		compatible = "jedec,spi-nor";
-		spi-max-frequency = <500000>;
-		status = "okay";
-	};
-
-		depends on DT_HAS_XLNX_MXIC_UEFC_SPI_ENABLED
-
- */
+#include <zephyr/drivers/mspi.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/sys_clock.h>
+#include <stdlib.h>
+#include <zephyr/irq.h>
 
 enum HC_XFER_MODE_TYPE {
 	HC_XFER_MODE_IO,
@@ -42,6 +26,8 @@ enum HC_XFER_MODE_TYPE {
 #define CHIP_SELECT_COUNT               3u
 #define SPI_WORD_SIZE                   8u
 #define SPI_WR_RD_CHUNK_SIZE_MAX        16u
+#define MXIC_UEFC_CMD_LENGTH   2
+#define MXIC_UEFC_ADDR_LENGTH   4
 
 #define BIT(x) (1U << (x))
 /* Host Controller Register */
@@ -68,6 +54,9 @@ enum HC_XFER_MODE_TYPE {
 #define HC_CTRL_LUN_MASK			HC_CTRL_LUN_SEL(0x7)
 #define HC_CTRL_PORT_SEL(x)			(((x) & 0xff) << 0)
 #define HC_CTRL_PORT_MASK			(HC_CTRL_PORT_SEL(0xff))
+
+#define HC_CMD_LENGTH_MASK          OP_CMD_CNT(0x7)
+#define HC_ADDR_LENGTH_MASK         OP_ADDR_CNT(0x7)
 
 #define HC_CTRL_CH_LUN_PORT_MASK	(HC_CTRL_CH_MASK | HC_CTRL_LUN_MASK | HC_CTRL_PORT_MASK)
 #define HC_CTRL_CH_LUN_PORT(ch, lun, port) (HC_CTRL_CH_SEL_##ch | HC_CTRL_LUN_SEL(lun) | HC_CTRL_PORT_SEL(port))
@@ -199,6 +188,14 @@ enum HC_XFER_MODE_TYPE {
 #define TFR_MODE_TO_ENHC		BIT(29)
 #define TFR_MODE_PREAM_WITH		BIT(28)
 #define TFR_MODE_CSB_DONT_CARE		BIT(27)
+#define TFR_MODE_CMD_CNT    		BIT(17)
+#define TFR_MODE_DATA_DTR    		BIT(16)
+#define TFR_MODE_ADDR_DTR    		BIT(13)
+#define TFR_MODE_CMD_DTR    		BIT(10)
+
+#define TFR_MODE_ADDR_CNT_MASK  	OP_ADDR_CNT(0x7)
+
+
 #define TFR_MODE_SIO_1X_RD_BUS(x)	(((x) & 0x3) << 6)
 #define TFR_MODE_MULT_BLK		BIT(5)
 #define TFR_MODE_AUTO_CMD(x)		(((x) & 0x3) << 2)
@@ -206,6 +203,15 @@ enum HC_XFER_MODE_TYPE {
 #define TFR_MODE_DMA_EN			BIT(0)
 /* share with MAPRD, MAPWR */
 	#define OP_DMY_CNT(_len, _dtr, _bw) (((_len * (_dtr + 1)) / (8 / (_bw))) << 21)
+
+	#define OP_DMY(x)		(((x) & 0x3F) << 21)
+	#define TFR_MODE_DMY_MASK			(OP_DMY(0x3f))
+	#define TFR_MODE_DATA_BUSW_MASK			(OP_DATA_BUSW(0x3))
+	#define TFR_MODE_CMD_BUSW_MASK			(OP_CMD_BUSW(0x3))
+	#define TFR_MODE_ADDR_BUSW_MASK			(OP_ADDR_BUSW(0x3))
+
+	#define TFR_MODE_ADDR_CNT_MASK			(OP_ADDR_CNT(0x7))
+
 
 	#define OP_ADDR_CNT(x)		(((x) & 0x7) << 18)
 	#define OP_CMD_CNT(x)		(((x) - 1) << 17)
@@ -527,7 +533,8 @@ enum HC_XFER_MODE_TYPE {
 #define UEFC_MAP_SIZE			0x00800000
 #define UEFC_TOP_MAP_ADDR 		(UEFC_BASE_MAP_ADDR + UEFC_MAP_SIZE)
 #define UEFC_BASE_EXT_DDR_ADDR	0x00000000
-
+#define DIR_IN  0
+#define DIR_OUT 1
 /* Default selection: Channel A, lun 0, Port 0 */
 #define UEFC_CH_LUN_PORT 		HC_CTRL_CH_LUN_PORT(A, 0, 0)
 
@@ -538,358 +545,49 @@ enum HC_XFER_MODE_TYPE {
 #define UPDATE_WRITE(_mask, _value, _reg) \
 	MXIC_WR32(((_value) | (MXIC_RD32(_reg) & ~(_mask))), (_reg))
 
-#define SPI_DATA(dev)                   ((struct mxic_uefc_data *) ((dev)->data))
-#define SPI_CFG(dev)                    ((struct mxic_uefc_config *) ((dev)->config))
-#define DIR_IN 0
-#define DIR_OUT 1
+#define MSPI_MAX_FREQ        48000000
+#define MSPI_MAX_DEVICE      2
+#define MSPI_TIMEOUT_US      1000000
+#define PWRCTRL_MAX_WAIT_US  5
+#define MSPI_BUSY            BIT(2)
 
-struct mxic_uefc_data {
-	DEVICE_MMIO_RAM;
-	uint8_t dir:1,
+struct mspi_context {
+	const struct mspi_dev_id      *owner;
 
-   dqs:1,
-   word_mode:1,
-   poll_en:1;
+	struct mspi_xfer              xfer;
+
+	mspi_callback_handler_t       callback;
+	struct mspi_callback_context  *callback_ctx;
+	bool asynchronous;
+
+	struct k_sem lock;
 };
 
-struct mxic_uefc_config {
+struct mspi_mxic_config {
 	DEVICE_MMIO_ROM;
+	uint32_t                        reg_base;
+	uint32_t                        reg_size;
+
+	struct mspi_cfg                 mspicfg;
+
+	LOG_INSTANCE_PTR_DECLARE(log);
 };
 
-static struct mxic_uefc_data mxic_uefc_data_0;
+struct mspi_mxic_data {
+	DEVICE_MMIO_RAM;
+	void                            *mspiHandle;
 
-static struct mxic_uefc_config mxic_uefc_config_0 = {
-	DEVICE_MMIO_ROM_INIT(DT_DRV_INST(0))
+	struct mspi_dev_id              *dev_id;
+	struct k_mutex                  lock;
+
+	struct mspi_dev_cfg             dev_cfg;
+	struct mspi_xip_cfg             xip_cfg;
+	struct mspi_scramble_cfg        scramble_cfg;
+	uint8_t data_buswidth;
+	bool data_dtr;
+
+	mspi_callback_handler_t         cbs[MSPI_BUS_EVENT_MAX];
+	struct mspi_callback_context    *cb_ctxs[MSPI_BUS_EVENT_MAX];
+
+	struct mspi_context             ctx;
 };
-
-static uint32_t mxic_uefc_conf(const struct device *dev);
-int fmsb32(uint32_t bits);
-static int mxic_uefc_hc_setup(const struct device *dev,  uint32_t ch_lun_port);
-static int mxic_uefc_poll_hc_reg(const struct device *dev, uint32_t reg, uint32_t mask);
-static int mxic_uefc_io_mode_xfer(const struct device *dev, void *tx, void *rx, uint32_t len);
-static void mxic_uefc_cs_end(const struct device *dev);
-static int mxic_uefc_transceive(const struct device *dev,
-			      const struct spi_config *config,
-			      const struct spi_buf_set *tx_bufs,
-			      const struct spi_buf_set *rx_bufs);
-static int mxic_uefc_release(const struct device *dev,
-			   const struct spi_config *config);
-static int mxic_uefc_init(const struct device *dev);
-static void mxic_uefc_cs_start(const struct device *dev);
-
-/**
- *  find msb
- *  For example:
- *  fmsb32(0) return -1
- *  fmsb32(1) return 0
- *  fmsb32(0x80000000) return 31
- **/
-int fmsb32(uint32_t bits)
-{
-	int n = 32, m = 16;
-	uint32_t x = 0xffffffff;
-
-	if (!bits) {
-		return -1;
-	}
-
-	do {
-		if (!(bits & (x << (32 - m)))) {
-			bits <<= m;
-			n -= m;
-		}
-		m >>= 1;
-	} while(m);
-
-	return n - 1;
-}
-
-static int mxic_uefc_hc_setup(const struct device *dev, uint32_t ch_lun_port)
-{
-	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
-	int dev_ctrl_type = DEV_CTRL_TYPE_SPI;
-
-	// switch (xfer->hc_flash_type) {
-	// case HC_FLASH_SPINOR:
-	// case HC_FLASH_SPINAND:
-	// 	dev_ctrl_type = DEV_CTRL_TYPE_SPI;
-	// 	break;
-	// case HC_FLASH_RAWNAND:
-	// 	dev_ctrl_type = DEV_CTRL_TYPE_RAWNAND_ONFI;
-	// 	break;
-	// default:
-	// 	mxic_pr_err("HC_FLASH_TYPE (%d) is not supported\r\n", xfer->hc_flash_type);
-	// 	return MXST_ERR_NOT_SUP;
-	// }
-
-	UPDATE_WRITE(HC_CTRL_CH_LUN_PORT_MASK, UEFC_CH_LUN_PORT, reg_base + HC_CTRL);
-	UPDATE_WRITE(DEV_CTRL_TYPE_MASK | DEV_CTRL_SCLK_SEL_MASK, dev_ctrl_type | DEV_CTRL_SCLK_SEL_DIV(4), reg_base + DEV_CTRL);
-
-	return 0;
-}
-
-static uint32_t mxic_uefc_conf(const struct device *dev)
-{
-	struct mxic_uefc_data *data = SPI_DATA(dev);
-	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
-
-	uint32_t conf =
-			OP_CMD_CNT(1) |
-			OP_CMD_BUSW(0) |
-			OP_CMD_DTR(0);
-	
-
-	conf |= OP_ADDR_CNT(3) |
-			OP_ADDR_BUSW(0) |
-			OP_ADDR_DTR(0);
-
-	/* Dummy's bus width and DTR are determined by the data */
-	conf |= OP_DMY_CNT(0, 0, 0);
-
-	conf |= OP_DATA_BUSW(0) |
-			OP_DATA_DTR(0) |
-			(DIR_IN == data->dir ? OP_DD_RD: 0);
-
-	UPDATE_WRITE(DEV_CTRL_DQS_EN, 0, reg_base + DEV_CTRL);
-	UPDATE_WRITE(HC_CTRL_DATA_ORDER, HC_CTRL_DATA_ORDER, reg_base + HC_CTRL);
-
-	
-	// if (HC_XFER_MODE_DMA == xfer->pkts->xfer_mode) {
-	// 	conf |= TFR_MODE_DMA_EN;
-	// }
-
-	return conf;
-}
-
-static int mxic_uefc_init(const struct device *dev)
-{
-	int ret = 0;
-
-	uint32_t uefc_version = 0;
-
- 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
-	DEVICE_MMIO_MAP(dev, K_MEM_CACHE_NONE);
-
-	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
- 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
-	uefc_version = MXIC_RD32(reg_base + INT_STS_SIG_EN);
-
-	printf ("***[%s], [%s], [%04d], version is %x\r\n", __FILE__, __func__, __LINE__, uefc_version);
-
-	MXIC_WR32(UEFC_BASE_MAP_ADDR, reg_base + BASE_MAP_ADDR);
-	MXIC_WR32(UEFC_TOP_MAP_ADDR, reg_base + TOP_MAP_ADDR);
-
-	ret =  mxic_uefc_hc_setup(dev, UEFC_CH_LUN_PORT);
-
-	uefc_version = MXIC_RD32(reg_base + HC_VER);
-
-	printf ("***[%s], [%s], [%04d], version is %x\r\n", __FILE__, __func__, __LINE__, uefc_version);
-
-	UPDATE_WRITE(HC_CTRL_SIO_SHIFTER(3), HC_CTRL_SIO_SHIFTER(3), reg_base + HC_CTRL);
-	
-	MXIC_WR32(CLK_CTRL_RX_SS_A(1) | CLK_CTRL_RX_SS_B(1), reg_base + CLK_CTRL);
-
-	MXIC_WR32(INT_STS_ALL_CLR, reg_base + INT_STS);
-	MXIC_WR32(INT_STS_EN_ALL_EN, reg_base + INT_STS_EN);
-	MXIC_WR32(INT_STS_SIG_EN_ALL_EN, reg_base + INT_STS_SIG_EN);
-
-	MXIC_WR32(ERR_INT_STS_ALL_CLR, reg_base + ERR_INT_STS);
-	MXIC_WR32(ERR_INT_STS_EN_ALL_EN, reg_base + ERR_INT_STS_EN);
-	MXIC_WR32(ERR_INT_STS_SIG_EN_ALL_EN, reg_base + ERR_INT_STS_SIG_EN);
-
-	MXIC_WR32(INT_STS_DMA | INT_STS_EN_DMA_TFR_CMPLT, reg_base + INT_STS_EN);
-
-	MXIC_WR32(SAMPLE_ADJ_DQS_IDLY_DOPI(0) | SAMPLE_ADJ_POINT_SEL_DDR(0) |
-			SAMPLE_ADJ_POINT_SEL_SDR(1), reg_base + SAMPLE_ADJ);
-
- 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
-	MXIC_WR32(0, reg_base + SIO_IDLY_1);
-	MXIC_WR32(0, reg_base + SIO_IDLY_2);
-	MXIC_WR32(0, reg_base + SIO_ODLY_1);
-	MXIC_WR32(0, reg_base + SIO_ODLY_2);
- 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
-	return ret;
-}
-
-static int mxic_uefc_poll_hc_reg(const struct device *dev, uint32_t reg, uint32_t mask)
-{
-	uint32_t val, n = 10000;
-	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
-
-	do {
-		val = MXIC_RD32(reg_base + reg) & mask;
-		n--;
-		k_usleep(1);
-	} while (!val && n);
-	if (!val) {
-		// mxic_pr_err("TIMEOUT! reg(%02Xh) & mask(%08Xh): val(%08Xh)\r\n", reg, mask, val);
-		return -1;
-	}
-	return 0;
-}
-
-static int mxic_uefc_io_mode_xfer(const struct device *dev, void *tx, void *rx, uint32_t len)
-{
-	uint32_t ofs = 0;
-
-	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
-
-	while (ofs < len) {
-		uint32_t nbytes = len - ofs;
-		uint32_t data = 0xffffffff;
-
-		int ret;
-
-		if (nbytes > 4) {
-			nbytes = 4;
-		}
-
-		if (tx) {
-			memcpy(&data, tx + ofs, nbytes);
-			// printk("tx data: %08X\r\n", data);
-		}
-
-		ret = mxic_uefc_poll_hc_reg(dev, PRES_STS, PRES_STS_TX_NFULL);
-		if (0 != ret) {
-			return ret;
-		}
-
-		MXIC_WR32(data, reg_base + TXD(nbytes %4));
-		ret = mxic_uefc_poll_hc_reg(dev, PRES_STS, PRES_STS_RX_NEMPT);
-		if (0 != ret) {
-			return ret;
-		}
-
-		data = MXIC_RD32(reg_base + RXD_REG);
-		if (rx) {
-			memcpy(rx + ofs, &data, nbytes);
-		}
-		// printk("RRRRRRRRRRRRRRRRRRRRRRRRRX data: %08X\r\n", data);
-		ofs += nbytes;
-	}
-
-	return 0;
-}
-
-static void mxic_uefc_cs_start(const struct device *dev)
-{
-	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
-	
-	/* Enable IO Mode */
-	MXIC_WR32(TFR_CTRL_IO_START, reg_base + TFR_CTRL);
-	while (TFR_CTRL_IO_START & MXIC_RD32(reg_base + TFR_CTRL));
-
-	/* Enable host controller, reset counter */
-	MXIC_WR32(TFR_CTRL_HC_ACT, reg_base + TFR_CTRL);
-	while (TFR_CTRL_HC_ACT & MXIC_RD32(reg_base + TFR_CTRL));
-
-	/* Assert CS */
-	MXIC_WR32(TFR_CTRL_DEV_ACT, reg_base + TFR_CTRL);
-	while (TFR_CTRL_DEV_ACT & MXIC_RD32(reg_base + TFR_CTRL));
-}
-
-static void mxic_uefc_cs_end(const struct device *dev)
-{
-	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
-
-	/* De-assert CS */
-	MXIC_WR32(TFR_CTRL_DEV_DIS, reg_base + TFR_CTRL);
-	while (TFR_CTRL_DEV_DIS & MXIC_RD32(reg_base + TFR_CTRL));
-
-	/* Disable IO Mode */
-	MXIC_WR32(TFR_CTRL_IO_END, reg_base + TFR_CTRL);
-	while (TFR_CTRL_IO_END & MXIC_RD32(reg_base + TFR_CTRL));
-}
-
-static inline void mxic_uefc_err_dessert_cs(const struct device *dev)
-{
-	mxic_uefc_cs_end(dev);
-}
-
-static int mxic_uefc_transceive(const struct device *dev,
-			      const struct spi_config *config,
-			      const struct spi_buf_set *tx_bufs,
-			      const struct spi_buf_set *rx_bufs)
-{
-	int ret = 0;
-	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
-	struct mxic_uefc_data *data = SPI_DATA(dev);
-
-	if (tx_bufs->count > 1 && rx_bufs == NULL) {
-		data->dir = DIR_OUT;
-	} else {
-		data->dir = DIR_IN;
-	}
-
-	MXIC_WR32(mxic_uefc_conf(dev), reg_base + TFR_MODE);
-
-	mxic_uefc_cs_start(dev);
-
-	/* Set up command  */
-	if (tx_bufs != NULL && tx_bufs->buffers[0].buf != NULL) {
-		ret = mxic_uefc_io_mode_xfer(dev, tx_bufs->buffers[0].buf, 0, tx_bufs->buffers[0].len);
-		if (0 != ret) {
-			mxic_uefc_err_dessert_cs(dev);
-			return ret;
-		}
-	}
-
-	if (tx_bufs->count > 1 && rx_bufs == NULL) {
-		ret = mxic_uefc_io_mode_xfer(dev, tx_bufs->buffers[1].buf, 0, tx_bufs->buffers[1].len);
-		if (0 != ret) {
-			mxic_uefc_err_dessert_cs(dev);
-			return ret;
-		}
-	}
-
-	if (rx_bufs != NULL && rx_bufs->buffers[1].buf != NULL) {
-		ret = mxic_uefc_io_mode_xfer(dev, 0, rx_bufs->buffers[1].buf, rx_bufs->buffers[1].len);
-		if (0 != ret) {
-			mxic_uefc_err_dessert_cs(dev);
-			return ret;
-		}
-	}
-
-	mxic_uefc_cs_end(dev);
-
-	return ret;
-}
-
-/* API implementation: release */
-static int mxic_uefc_release(const struct device *dev,
-			   const struct spi_config *config)
-{
-	mxic_uefc_cs_end(dev);
-
-	return 0;
-}
-
-
-/* SPI driver APIs structure */
-static const struct spi_driver_api mxic_uefc_api = {
-	.transceive = mxic_uefc_transceive,
-	.release = mxic_uefc_release,
-};
-
-// DEVICE_DT_INST_DEFINE(0, &mxic_uefc_init, NULL,
-// 		 &mxic_uefc_data_0, NULL,
-// 		 POST_KERNEL, CONFIG_SPI_INIT_PRIORITY,
-// 		 &mxic_uefc_api);
-
-#define MXIC_UEFC_INIT(inst)						  \
-									  \
-	DEVICE_DT_INST_DEFINE(inst, mxic_uefc_init,			  \
-			      NULL,					  \
-			      &mxic_uefc_data_0,			  \
-			      &mxic_uefc_config_0,			  \
-			      POST_KERNEL,				  \
-			      CONFIG_SPI_INIT_PRIORITY,			  \
-			      &mxic_uefc_api);
-
-DT_INST_FOREACH_STATUS_OKAY(MXIC_UEFC_INIT)
-
-

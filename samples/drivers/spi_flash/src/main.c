@@ -224,34 +224,32 @@ int main(void)
  	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	const struct device *mspi_dev = DEVICE_DT_GET_ONE(XLNX_MSPI_COMPAT);
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if (!mspi_dev) {
  		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 		return;
 	}
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	device_init(mspi_dev);
 
-	// const struct device *flash_dev = DEVICE_DT_GET_ONE(jedec_mspi_nor);
+	const struct device *flash_dev = DEVICE_DT_GET_ONE(jedec_mspi_nor);
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-	// if (!flash_dev) {
- 	// 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-	// 	return;
-	// }
+	if (!flash_dev) {
+ 		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+		return;
+	}
 
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
- 	// // 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+	device_init(flash_dev);
 
-
-	// device_init(flash_dev);
-
-
-// const struct device *flash_dev = DEVICE_DT_GET_ONE(SPI_FLASH_COMPAT);
-
-// 	if (!device_is_ready(flash_dev)) {
-// 		printk("%s: device not ready.\n", flash_dev->name);
-// 		return 0;
-// 	}
+	if (!device_is_ready(flash_dev)) {
+		printk("%s: device not ready.\n", flash_dev->name);
+		return 0;
+	}
 
 // 	printf("\n%s SPI flash testing\n", flash_dev->name);
 // 	printf("==========================\n");
