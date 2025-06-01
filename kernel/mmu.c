@@ -907,15 +907,15 @@ void k_mem_map_phys_bare(uint8_t **virt_ptr, uintptr_t phys, size_t size, uint32
 	__ASSERT(aligned_phys < (aligned_phys + (aligned_size - 1)),
 		 "wraparound for physical address 0x%lx (size %zu)",
 		 aligned_phys, aligned_size);
-
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	align_boundary = arch_virt_region_align(aligned_phys, aligned_size);
-
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	key = k_spin_lock(&z_mm_lock);
-
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	if (IS_ENABLED(CONFIG_KERNEL_DIRECT_MAP) &&
 	    (flags & K_MEM_DIRECT_MAP)) {
 		dest_addr = (uint8_t *)aligned_phys;
-
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 		/* Mark the region of virtual memory bitmap as used
 		 * if the region overlaps the virtual memory space.
 		 *
@@ -929,19 +929,22 @@ void k_mem_map_phys_bare(uint8_t **virt_ptr, uintptr_t phys, size_t size, uint32
 		    IN_RANGE(aligned_phys + aligned_size - 1,
 			      (uintptr_t)K_MEM_VIRT_RAM_START,
 			      (uintptr_t)(K_MEM_VIRT_RAM_END - 1))) {
+					printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 			uint8_t *adjusted_start = MAX(dest_addr, K_MEM_VIRT_RAM_START);
 			uint8_t *adjusted_end = MIN(dest_addr + aligned_size,
 						    K_MEM_VIRT_RAM_END);
 			size_t adjusted_sz = adjusted_end - adjusted_start;
-
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 			num_bits = adjusted_sz / CONFIG_MMU_PAGE_SIZE;
 			offset = virt_to_bitmap_offset(adjusted_start, adjusted_sz);
+			printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 			if (sys_bitarray_test_and_set_region(
 			    &virt_region_bitmap, num_bits, offset, true)) {
 				goto fail;
 			}
 		}
 	} else {
+		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 		/* Obtain an appropriately sized chunk of virtual memory */
 		dest_addr = virt_region_alloc(aligned_size, align_boundary);
 		if (!dest_addr) {
