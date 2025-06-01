@@ -292,11 +292,11 @@ static void *virt_region_alloc(size_t size, size_t align)
 	size_t offset;
 	size_t num_bits;
 	int ret;
-
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	if (unlikely(!virt_region_inited)) {
 		virt_region_init();
 	}
-
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	/* Possibly request more pages to ensure we can get an aligned virtual address */
 	num_bits = (size + align - CONFIG_MMU_PAGE_SIZE) / CONFIG_MMU_PAGE_SIZE;
 	alloc_size = num_bits * CONFIG_MMU_PAGE_SIZE;
@@ -306,13 +306,13 @@ static void *virt_region_alloc(size_t size, size_t align)
 			size);
 		return NULL;
 	}
-
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	/* Remember that bit #0 in bitmap corresponds to the highest
 	 * virtual address. So here we need to go downwards (backwards?)
 	 * to get the starting address of the allocated region.
 	 */
 	dest_addr = virt_from_bitmap_offset(offset, alloc_size);
-
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	if (alloc_size > size) {
 		uintptr_t aligned_dest_addr = ROUND_UP(dest_addr, align);
 
@@ -354,16 +354,16 @@ static void *virt_region_alloc(size_t size, size_t align)
 			virt_region_free(UINT_TO_POINTER(aligned_dest_addr + size),
 					 (dest_addr + alloc_size) - (aligned_dest_addr + size));
 		}
-
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 		dest_addr = aligned_dest_addr;
 	}
-
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	/* Need to make sure this does not step into kernel memory */
 	if (dest_addr < POINTER_TO_UINT(Z_VIRT_REGION_START_ADDR)) {
 		(void)sys_bitarray_free(&virt_region_bitmap, size, offset);
 		return NULL;
 	}
-
+printf ("***[%s], [%s], [%04d], dest_addr is %x \r\n", __FILE__, __func__, __LINE__, dest_addr);
 	return UINT_TO_POINTER(dest_addr);
 }
 
@@ -947,24 +947,33 @@ printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 		/* Obtain an appropriately sized chunk of virtual memory */
 		dest_addr = virt_region_alloc(aligned_size, align_boundary);
+
+		printf ("***[%s], [%s], [%04d], dest_addr is %x \r\n", __FILE__, __func__, __LINE__, dest_addr);
 		if (!dest_addr) {
 			goto fail;
 		}
 	}
+		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	/* If this fails there's something amiss with virt_region_get */
 	__ASSERT((uintptr_t)dest_addr <
 		 ((uintptr_t)dest_addr + (size - 1)),
 		 "wraparound for virtual address %p (size %zu)",
 		 dest_addr, size);
+		printf ("***[%s], [%s], [%04d], dest_addr is %x \r\n", __FILE__, __func__, __LINE__, dest_addr);
 
 	LOG_DBG("arch_mem_map(%p, 0x%lx, %zu, %x) offset %lu", dest_addr,
 		aligned_phys, aligned_size, flags, addr_offset);
 
 	arch_mem_map(dest_addr, aligned_phys, aligned_size, flags);
+		printf ("***[%s], [%s], [%04d], dest_addr is %x, addr_offset is %x\r\n", __FILE__, __func__, __LINE__, dest_addr, addr_offset);
+
 	k_spin_unlock(&z_mm_lock, key);
+		printf ("***[%s], [%s], [%04d], dest_addr is %x, addr_offset is %x\r\n", __FILE__, __func__, __LINE__, dest_addr, addr_offset);
 
 	*virt_ptr = dest_addr + addr_offset;
+		printf ("***[%s], [%s], [%04d], dest_addr is %x \r\n", __FILE__, __func__, __LINE__, dest_addr);
+
 	return;
 fail:
 	/* May re-visit this in the future, but for now running out of
@@ -974,6 +983,8 @@ fail:
 	 * Other problems not related to resource exhaustion we leave as
 	 * assertions since they are clearly programming mistakes.
 	 */
+			printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
 	LOG_ERR("memory mapping 0x%lx (size %zu, flags 0x%x) failed",
 		phys, size, flags);
 	k_panic();
