@@ -636,20 +636,20 @@ static int flash_chip_init(const struct device *dev)
 	enum mspi_io_mode io_mode = dev_config->mspi_nor_cfg.io_mode;
 	uint8_t id[JESD216_READ_ID_LEN] = {0};
 	int rc;
-
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
 
 	if (rc < 0) {
 		return rc;
 	}
-
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	/* Some chips reuse RESET pin for data in Quad modes:
 	 * force single line mode before resetting.
 	 */
 	if ((io_mode == MSPI_IO_MODE_SINGLE) || (io_mode == MSPI_IO_MODE_QUAD_1_1_4) ||
 	    (io_mode == MSPI_IO_MODE_QUAD_1_4_4)) {
 		rc = quad_enable_set(dev, false);
-
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 		if (rc < 0) {
 			LOG_ERR("Failed to switch to single line mode: %d", rc);
 			return rc;
@@ -662,7 +662,7 @@ static int flash_chip_init(const struct device *dev)
 			return rc;
 		}
 	}
-
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 #if defined(WITH_RESET_GPIO)
 	rc = gpio_reset(dev);
 
@@ -671,24 +671,31 @@ static int flash_chip_init(const struct device *dev)
 		return rc;
 	}
 #endif
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	flash_mspi_command_set(dev, &commands_single.id);
 	dev_data->packet.data_buf  = id;
 	dev_data->packet.num_bytes = sizeof(id);
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
 			     &dev_data->xfer);
 	if (rc < 0) {
+		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
 		LOG_ERR("Failed to read JEDEC ID in initial line mode: %d", rc);
 		return rc;
 	}
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	rc = default_io_mode(dev);
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if (rc < 0) {
 		LOG_ERR("Failed to switch to default io mode: %d", rc);
 		return rc;
 	}
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	/* Reading JEDEC ID for mode that forces single lane would be redundant,
 	 * since it switches back to single lane mode. Use ID from previous read.
@@ -700,6 +707,7 @@ static int flash_chip_init(const struct device *dev)
 			return rc;
 		}
 	}
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if (memcmp(id, dev_config->jedec_id, sizeof(id)) != 0) {
 		LOG_ERR("JEDEC ID mismatch, read: %02x %02x %02x, "
@@ -710,6 +718,7 @@ static int flash_chip_init(const struct device *dev)
 			dev_config->jedec_id[2]);
 		return -ENODEV;
 	}
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 #if defined(CONFIG_MSPI_XIP)
 	/* Enable XIP access for this chip if specified so in DT. */
@@ -721,6 +730,7 @@ static int flash_chip_init(const struct device *dev)
 		}
 	}
 #endif
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	return 0;
 }

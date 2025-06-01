@@ -105,7 +105,7 @@
 		spi0: spi@43a00000 {
 			#address-cells = <1>;
 			#size-cells = <0>;
-			status = "disabled";
+			status = "okay";
 			reg = <0x43a00000 0x10000>;
 			compatible = "xlnx,mspi-controller";
 		};

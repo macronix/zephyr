@@ -17,18 +17,37 @@ static int mxic_uefc_init(const struct device *dev);
 static void mxic_uefc_cs_start(const struct device *dev);
 static int mspi_mxic_config(const struct mspi_dt_spec *spec);
 
+struct mspi_mxic_config {
+	DEVICE_MMIO_ROM;
+};
+
+struct mspi_mxic_data {
+	DEVICE_MMIO_RAM;
+
+	struct mspi_dev_id              *dev_id;
+	struct k_mutex                  lock;
+
+	struct mspi_dev_cfg             dev_cfg;
+	struct mspi_xip_cfg             xip_cfg;
+	struct mspi_scramble_cfg        scramble_cfg;
+	uint8_t data_buswidth;
+	bool data_dtr;
+
+	mspi_callback_handler_t         cbs[MSPI_BUS_EVENT_MAX];
+	struct mspi_callback_context    *cb_ctxs[MSPI_BUS_EVENT_MAX];
+	struct mspi_context             ctx;
+};
+
 static int mxic_uefc_init(const struct device *dev)
 {
-
-#ifdef CONFIG_MMU
-	printf ("**dddddddddddddddd*[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-#endif
 	int ret = 0;
+    const struct mspi_mxic_config *cfg = dev->config;
+
+	struct mspi_mxic_data *data = dev->data;
+
 	uint32_t uefc_version = 0;
-			printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	DEVICE_MMIO_MAP(dev, K_MEM_CACHE_NONE);
-		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
@@ -128,6 +147,7 @@ static int mxic_uefc_io_mode_xfer(const struct device *dev, void *tx, void *rx, 
 	uint32_t nbytes, tmp = 0, ofs = 0;
 	struct mspi_mxic_data *data = dev->data;
 	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	uint8_t data_octal_dtr = is_data && data->data_dtr && (8 == data->data_buswidth);
 
@@ -151,13 +171,13 @@ static int mxic_uefc_io_mode_xfer(const struct device *dev, void *tx, void *rx, 
 			nbytes++;
 		}
 
-		ret = mxic_uefc_poll_hc_reg(data, PRES_STS, PRES_STS_TX_NFULL);
+		ret = mxic_uefc_poll_hc_reg(dev, PRES_STS, PRES_STS_TX_NFULL);
 		if (EXIT_SUCCESS != ret) {
 			return ret;
 		}
 
 		MXIC_WR32(data, reg_base + TXD(nbytes % 4));
-		ret = mxic_uefc_poll_hc_reg(data, PRES_STS, PRES_STS_RX_NEMPT);
+		ret = mxic_uefc_poll_hc_reg(dev, PRES_STS, PRES_STS_RX_NEMPT);
 		if (EXIT_SUCCESS != ret) {
 			return ret;
 		}
@@ -180,7 +200,7 @@ static void mspi_mxic_set_line(const struct device *dev, enum mspi_io_mode io_mo
 	const struct mspi_mxic_config *cfg = dev->config;
 	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
 	if (data_rate != MSPI_DATA_RATE_SINGLE) {
-		LOG_INST_ERR(cfg->log, "%u, incorrect data rate, only SDR is supported.", __LINE__);
+		// LOG_INST_ERR(cfg->log, "%u, incorrect data rate, only SDR is supported.", __LINE__);
 		return -EINVAL;
 	}
 
@@ -287,15 +307,14 @@ static int mspi_mxic_dev_config(const struct device *dev,
 	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
 	int ret = 0;
 
-	if (param_mask == MSPI_DEVICE_CONFIG_NONE &&
-	    !cfg->mspicfg.sw_multi_periph) {
+	if (param_mask == MSPI_DEVICE_CONFIG_NONE ) {
 		/* Do nothing except obtaining the controller lock */
 		data->dev_id = (struct mspi_dev_id *)dev_id;
 		return ret;
 	} else if (param_mask != MSPI_DEVICE_CONFIG_ALL) {
 		if (data->dev_id != dev_id) {
-			LOG_INST_ERR(cfg->log, "%u, config failed, must be the same device.",
-				     __LINE__);
+			// LOG_INST_ERR(cfg->log, "%u, config failed, must be the same device.",
+			// 	     __LINE__);
 			ret = -ENOTSUP;
 			goto e_return;
 		}
@@ -306,7 +325,7 @@ static int mspi_mxic_dev_config(const struct device *dev,
 				     MSPI_DEVICE_CONFIG_DATA_RATE |
 				     MSPI_DEVICE_CONFIG_CMD_LEN |
 				     MSPI_DEVICE_CONFIG_ADDR_LEN)))) {
-			LOG_INST_ERR(cfg->log, "%u, config type not supported.", __LINE__);
+			// LOG_INST_ERR(cfg->log, "%u, config type not supported.", __LINE__);
 			ret = -ENOTSUP;
 			goto e_return;
 		}
@@ -328,7 +347,7 @@ static int mspi_mxic_dev_config(const struct device *dev,
 		if (param_mask & MSPI_DEVICE_CONFIG_CMD_LEN) {
 			if (dev_cfg->cmd_length > MXIC_UEFC_CMD_LENGTH ||
 			    dev_cfg->cmd_length == 0) {
-				LOG_INST_ERR(cfg->log, "%u, invalid cmd_length.", __LINE__);
+				// LOG_INST_ERR(cfg->log, "%u, invalid cmd_length.", __LINE__);
 				ret = -ENOTSUP;
 				goto e_return;
 			}
@@ -341,7 +360,7 @@ static int mspi_mxic_dev_config(const struct device *dev,
 		if (param_mask & MSPI_DEVICE_CONFIG_ADDR_LEN) {
 			if (dev_cfg->addr_length > MXIC_UEFC_ADDR_LENGTH ||
 			    dev_cfg->addr_length == 0) {
-				LOG_INST_ERR(cfg->log, "%u, invalid addr_length.", __LINE__);
+				// LOG_INST_ERR(cfg->log, "%u, invalid addr_length.", __LINE__);
 				ret = -ENOTSUP;
 				goto e_return;
 			}
@@ -362,16 +381,16 @@ static int mspi_mxic_dev_config(const struct device *dev,
 		}
 
 		if (dev_cfg->endian != MSPI_XFER_LITTLE_ENDIAN) {
-			LOG_INST_ERR(cfg->log, "%u, only support MSB first.", __LINE__);
+			// LOG_INST_ERR(cfg->log, "%u, only support MSB first.", __LINE__);
 			ret = -ENOTSUP;
 			goto e_return;
 		}
 
-		if (dev_cfg->dqs_enable && !cfg->mspicfg.dqs_support) {
-			LOG_INST_ERR(cfg->log, "%u, only support non-DQS mode.", __LINE__);
-			ret = -ENOTSUP;
-			goto e_return;
-		}
+		// if (dev_cfg->dqs_enable && !cfg->mspicfg.dqs_support) {
+		// 	// LOG_INST_ERR(cfg->log, "%u, only support non-DQS mode.", __LINE__);
+		// 	ret = -ENOTSUP;
+		// 	goto e_return;
+		// }
 
 		mspi_mxic_set_line(dev, dev_cfg->io_mode, dev_cfg->data_rate);
 
@@ -429,23 +448,29 @@ static int mspi_pio_transceive(const struct device *dev,
 	const struct mspi_xfer_packet *packet;
 	uint32_t packet_idx;
 	int ret = 0;
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if (xfer->num_packet == 0 ||
 	    !xfer->packets) {
 		return -EFAULT;
 	}
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	mxic_uefc_cs_start(dev);
+printf ("***[%s], [%s], [%04d],xfer->cmd_length is %x \r\n", __FILE__, __func__, __LINE__, xfer->cmd_length);
 
 	/* Set up command  */
 	if (xfer->cmd_length) {
 		ret = mxic_uefc_io_mode_xfer(dev, (uint8_t *)&xfer->cmd_length, 0, xfer->cmd_length,
 				0);
+			printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+	
 		if (EXIT_SUCCESS != ret) {
 			mxic_uefc_err_dessert_cs(dev);
 			return ret;
 		}
 	}
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	/* Set up address */
 	if (xfer->addr_length) {
@@ -454,8 +479,10 @@ static int mspi_pio_transceive(const struct device *dev,
 			mxic_uefc_err_dessert_cs(dev);
 		}
 	}
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	uint32_t dummy_length = MSPI_TX == xfer->packets->dir ? xfer->tx_dummy : xfer->rx_dummy;
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	/* Setup dummy: dummy's bus width and DTR are determined by the data */
 	if (dummy_length) {
@@ -466,6 +493,7 @@ static int mspi_pio_transceive(const struct device *dev,
 			return ret;
 		}
 	}
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	/* Set up read/write Data */
 	if (xfer->packets->data_buf) {
@@ -478,6 +506,7 @@ static int mspi_pio_transceive(const struct device *dev,
 			return ret;
 		}
 	}
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	mxic_uefc_cs_end(dev);
 
@@ -494,18 +523,23 @@ static int mspi_mxic_transceive(const struct device *dev,
 	struct mspi_mxic_data *data = dev->data;
 	mspi_callback_handler_t cb = NULL;
 	struct mspi_callback_context *cb_ctx = NULL;
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-	if (dev_id != data->dev_id) {
-		LOG_INST_ERR(cfg->log, "%u, dev_id don't match.", __LINE__);
-		return -ESTALE;
-	}
+	// if (dev_id != data->dev_id) {
+	// 	// LOG_INST_ERR(cfg->log, "%u, dev_id don't match.", __LINE__);
+	// 	return -ESTALE;
+	// }
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if (xfer->async) {
 		cb = data->cbs[MSPI_BUS_XFER_COMPLETE];
 		cb_ctx = data->cb_ctxs[MSPI_BUS_XFER_COMPLETE];
 	}
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if (xfer->xfer_mode == MSPI_PIO) {
+		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
 		return mspi_pio_transceive(dev, xfer, cb, cb_ctx);
 	} else if (xfer->xfer_mode == MSPI_DMA) {
 		// return mspi_dma_transceive(dev, xfer, cb, cb_ctx);
@@ -528,12 +562,11 @@ static struct mspi_driver_api mspi_mxic_driver_api = {
 	.transceive            = mspi_mxic_transceive,
 };
 
-// DT_INST_FOREACH_STATUS_OKAY(XLNX_MSPI_DEFINE)
 static const struct mspi_mxic_config  mspi_mxic_config_0 = {
 	DEVICE_MMIO_ROM_INIT(DT_DRV_INST(0))
 };
 
-static const struct mspi_mxic_data  mspi_mxic_data_0;
+static struct mspi_mxic_data  mspi_mxic_data_0; 
 
 DEVICE_DT_INST_DEFINE(0,                                                                 
 				&mxic_uefc_init,                                                   

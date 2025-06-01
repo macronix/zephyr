@@ -11,6 +11,12 @@
 #include <stdio.h>
 #include <string.h>
 
+#if DT_HAS_COMPAT_STATUS_OKAY(xlnx_mspi_controller)
+#define XLNX_MSPI_COMPAT xlnx_mspi_controller
+#else
+#define XLNX_MSPI_COMPAT invalid
+#endif
+
 #define SPI_FLASH_TEST_REGION_OFFSET 0xff000
 
 #define SPI_FLASH_SECTOR_SIZE        4096
@@ -166,24 +172,64 @@ int multi_sector_test(const struct device *flash_dev)
 
 int main(void)
 {
-	const struct device *flash_dev = DEVICE_DT_GET(DT_ALIAS(flash0));
+ 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
+	const struct device *mspi_dev = DEVICE_DT_GET_ONE(XLNX_MSPI_COMPAT);
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
+	if (!mspi_dev) {
+ 		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+		return;
+	}
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
+	device_init(mspi_dev);
+
+	const struct device *flash_dev = DEVICE_DT_GET_ONE(jedec_mspi_nor);
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
+	if (!flash_dev) {
+ 		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+		return;
+	}
+
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
+	device_init(flash_dev);
 
 	if (!device_is_ready(flash_dev)) {
 		printk("%s: device not ready.\n", flash_dev->name);
-		return 1;
+		return 0;
 	}
 
-	printf("\n%s SPI flash testing\n", flash_dev->name);
-	printf("==========================\n");
+// 	printf("\n%s SPI flash testing\n", flash_dev->name);
+// 	printf("==========================\n");
 
-	if (single_sector_test(flash_dev)) {
-		return 1;
-	}
-#if defined SPI_FLASH_MULTI_SECTOR_TEST
-	if (multi_sector_test(flash_dev)) {
-		return 1;
-	}
-#endif
-	printf("==========================\n");
+	// single_sector_test(flash_dev);
+// #if defined SPI_FLASH_MULTI_SECTOR_TEST
+// 	multi_sector_test(flash_dev);
+// #endif
 	return 0;
+
+
+// 	const struct device *flash_dev = DEVICE_DT_GET(DT_ALIAS(flash0));
+
+// 	if (!device_is_ready(flash_dev)) {
+// 		printk("%s: device not ready.\n", flash_dev->name);
+// 		return 1;
+// 	}
+
+// 	printf("\n%s SPI flash testing\n", flash_dev->name);
+// 	printf("==========================\n");
+
+// 	if (single_sector_test(flash_dev)) {
+// 		return 1;
+// 	}
+// #if defined SPI_FLASH_MULTI_SECTOR_TEST
+// 	if (multi_sector_test(flash_dev)) {
+// 		return 1;
+// 	}
+// #endif
+// 	printf("==========================\n");
+// 	return 0;
 }

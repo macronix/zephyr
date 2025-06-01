@@ -9,7 +9,6 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/util.h>
 #include <zephyr/pm/device.h>
-#include <zephyr/drivers/pinctrl.h>
 #include <zephyr/drivers/mspi.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/sys_clock.h>
@@ -563,31 +562,4 @@ struct mspi_context {
 	struct k_sem lock;
 };
 
-struct mspi_mxic_config {
-	DEVICE_MMIO_ROM;
-	uint32_t                        reg_base;
-	uint32_t                        reg_size;
 
-	struct mspi_cfg                 mspicfg;
-
-	LOG_INSTANCE_PTR_DECLARE(log);
-};
-
-struct mspi_mxic_data {
-	DEVICE_MMIO_RAM;
-	void                            *mspiHandle;
-
-	struct mspi_dev_id              *dev_id;
-	struct k_mutex                  lock;
-
-	struct mspi_dev_cfg             dev_cfg;
-	struct mspi_xip_cfg             xip_cfg;
-	struct mspi_scramble_cfg        scramble_cfg;
-	uint8_t data_buswidth;
-	bool data_dtr;
-
-	mspi_callback_handler_t         cbs[MSPI_BUS_EVENT_MAX];
-	struct mspi_callback_context    *cb_ctxs[MSPI_BUS_EVENT_MAX];
-
-	struct mspi_context             ctx;
-};
