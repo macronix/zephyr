@@ -907,15 +907,15 @@ void k_mem_map_phys_bare(uint8_t **virt_ptr, uintptr_t phys, size_t size, uint32
 	__ASSERT(aligned_phys < (aligned_phys + (aligned_size - 1)),
 		 "wraparound for physical address 0x%lx (size %zu)",
 		 aligned_phys, aligned_size);
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+		printf ("***[%s], [%s], [%04d], dest_addr is %x, addr_offset is %x\r\n", __FILE__, __func__, __LINE__, dest_addr, addr_offset);
 	align_boundary = arch_virt_region_align(aligned_phys, aligned_size);
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+		printf ("***[%s], [%s], [%04d], dest_addr is %x, addr_offset is %x\r\n", __FILE__, __func__, __LINE__, dest_addr, addr_offset);
 	key = k_spin_lock(&z_mm_lock);
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+		printf ("***[%s], [%s], [%04d], dest_addr is %x, addr_offset is %x\r\n", __FILE__, __func__, __LINE__, dest_addr, addr_offset);
 	if (IS_ENABLED(CONFIG_KERNEL_DIRECT_MAP) &&
 	    (flags & K_MEM_DIRECT_MAP)) {
 		dest_addr = (uint8_t *)aligned_phys;
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+		printf ("***[%s], [%s], [%04d], dest_addr is %x, addr_offset is %x\r\n", __FILE__, __func__, __LINE__, dest_addr, addr_offset);
 		/* Mark the region of virtual memory bitmap as used
 		 * if the region overlaps the virtual memory space.
 		 *
@@ -934,7 +934,7 @@ printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 			uint8_t *adjusted_end = MIN(dest_addr + aligned_size,
 						    K_MEM_VIRT_RAM_END);
 			size_t adjusted_sz = adjusted_end - adjusted_start;
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+		printf ("***[%s], [%s], [%04d], dest_addr is %x, addr_offset is %x\r\n", __FILE__, __func__, __LINE__, dest_addr, addr_offset);
 			num_bits = adjusted_sz / CONFIG_MMU_PAGE_SIZE;
 			offset = virt_to_bitmap_offset(adjusted_start, adjusted_sz);
 			printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
@@ -944,23 +944,23 @@ printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 			}
 		}
 	} else {
-		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+		printf ("***[%s], [%s], [%04d], dest_addr is %x, addr_offset is %x\r\n", __FILE__, __func__, __LINE__, dest_addr, addr_offset);
 		/* Obtain an appropriately sized chunk of virtual memory */
 		dest_addr = virt_region_alloc(aligned_size, align_boundary);
 
-		printf ("***[%s], [%s], [%04d], dest_addr is %x \r\n", __FILE__, __func__, __LINE__, dest_addr);
+		printf ("***[%s], [%s], [%04d], dest_addr is %x, addr_offset is %x\r\n", __FILE__, __func__, __LINE__, dest_addr, addr_offset);
 		if (!dest_addr) {
 			goto fail;
 		}
 	}
-		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+		printf ("***[%s], [%s], [%04d], dest_addr is %x, addr_offset is %x\r\n", __FILE__, __func__, __LINE__, dest_addr, addr_offset);
 
 	/* If this fails there's something amiss with virt_region_get */
 	__ASSERT((uintptr_t)dest_addr <
 		 ((uintptr_t)dest_addr + (size - 1)),
 		 "wraparound for virtual address %p (size %zu)",
 		 dest_addr, size);
-		printf ("***[%s], [%s], [%04d], dest_addr is %x \r\n", __FILE__, __func__, __LINE__, dest_addr);
+		printf ("***[%s], [%s], [%04d], dest_addr is %x, addr_offset is %x\r\n", __FILE__, __func__, __LINE__, dest_addr, addr_offset);
 
 	LOG_DBG("arch_mem_map(%p, 0x%lx, %zu, %x) offset %lu", dest_addr,
 		aligned_phys, aligned_size, flags, addr_offset);
