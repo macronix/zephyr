@@ -138,11 +138,11 @@ static int api_read(const struct device *dev, off_t addr, void *dest,
 		return rc;
 	}
 
-	if (dev_config->jedec_cmds->read.force_single) {
-		rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
-	} else {
-		rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
-	}
+	// if (dev_config->jedec_cmds->read.force_single) {
+	// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
+	// } else {
+	// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
+	// }
 
 	if (rc < 0) {
 		return rc;
@@ -172,12 +172,12 @@ static int status_get(const struct device *dev, uint8_t *status)
 	struct flash_mspi_nor_data *dev_data = dev->data;
 	int rc;
 
-	/* Enter command mode */
-	if (dev_config->jedec_cmds->status.force_single) {
-		rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
-	} else {
-		rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
-	}
+	// /* Enter command mode */
+	// if (dev_config->jedec_cmds->status.force_single) {
+	// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
+	// } else {
+	// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
+	// }
 
 	if (rc < 0) {
 		LOG_ERR("Switching to dev_cfg failed: %d", rc);
@@ -227,11 +227,11 @@ static int write_enable(const struct device *dev)
 	struct flash_mspi_nor_data *dev_data = dev->data;
 	int rc;
 
-	if (dev_config->jedec_cmds->write_en.force_single) {
-		rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
-	} else {
-		rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
-	}
+	// if (dev_config->jedec_cmds->write_en.force_single) {
+	// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
+	// } else {
+	// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
+	// }
 
 	if (rc < 0) {
 		return rc;
@@ -274,11 +274,11 @@ static int api_write(const struct device *dev, off_t addr, const void *src,
 			break;
 		}
 
-		if (dev_config->jedec_cmds->page_program.force_single) {
-			rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
-		} else {
-			rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
-		}
+		// if (dev_config->jedec_cmds->page_program.force_single) {
+		// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
+		// } else {
+		// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
+		// }
 
 		if (rc < 0) {
 			return rc;
@@ -349,11 +349,11 @@ static int api_erase(const struct device *dev, off_t addr, size_t size)
 
 		if (size == flash_size) {
 			/* Chip erase. */
-			if (dev_config->jedec_cmds->chip_erase.force_single) {
-				rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
-			} else {
-				rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
-			}
+			// if (dev_config->jedec_cmds->chip_erase.force_single) {
+			// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
+			// } else {
+			// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
+			// }
 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 			if (rc < 0) {
@@ -365,11 +365,11 @@ static int api_erase(const struct device *dev, off_t addr, size_t size)
 			size -= flash_size;
 		} else {
 			/* Sector erase. */
-			if (dev_config->jedec_cmds->sector_erase.force_single) {
-				rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
-			} else {
-				rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
-			}
+			// if (dev_config->jedec_cmds->sector_erase.force_single) {
+			// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
+			// } else {
+			// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
+			// }
 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 			if (rc < 0) {

@@ -17,6 +17,7 @@ static int mxic_uefc_init(const struct device *dev);
 static void mxic_uefc_cs_start(const struct device *dev);
 static int mspi_mxic_config(const struct mspi_dt_spec *spec);
 
+
 struct mspi_mxic_config {
 	DEVICE_MMIO_ROM;
 };
@@ -205,11 +206,14 @@ static int mxic_uefc_io_mode_xfer(const struct device *dev, void *tx, void *rx, 
 	return EXIT_SUCCESS;
 }
 
-static void mspi_mxic_set_line(const struct device *dev, enum mspi_io_mode io_mode,
-					  enum mspi_data_rate data_rate)
+static void mspi_mxic_set_line(const struct device *dev, const struct mspi_dev_cfg *dev_cfg)
 {
 	struct mspi_mxic_data *data = dev->data;
 	const struct mspi_mxic_config *cfg = dev->config;
+
+	enum mspi_io_mode io_mode = dev_cfg->io_mode;
+	enum mspi_data_rate data_rate = dev_cfg->data_rate;
+
 	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
 	if (data_rate != MSPI_DATA_RATE_SINGLE) {
 		// LOG_INST_ERR(cfg->log, "%u, incorrect data rate, only SDR is supported.", __LINE__);
@@ -288,10 +292,12 @@ static void mspi_mxic_set_line(const struct device *dev, enum mspi_io_mode io_mo
 		TFR_MODE_CMD_DTR
 	);
 
-	conf =	OP_CMD_BUSW(cmd_bus) |
+	conf =	OP_CMD_CNT(dev_cfg->cmd_length) | 
+			OP_CMD_BUSW(cmd_bus) |
 			OP_CMD_DTR(cmd_ddr  ? 1 : 0);
 
-	conf |= OP_ADDR_BUSW(addr_bus) |
+	conf |= OP_ADDR_CNT (dev_cfg->addr_length) |
+			OP_ADDR_BUSW(addr_bus) |
 			OP_ADDR_DTR(addr_ddr ? 1 : 0);
 
 	conf |= OP_DATA_BUSW(data_bus) |
@@ -356,7 +362,7 @@ static int mspi_mxic_dev_config(const struct device *dev,
 		if ((param_mask & MSPI_DEVICE_CONFIG_IO_MODE) ||
 		    (param_mask & MSPI_DEVICE_CONFIG_CE_NUM) ||
 		    (param_mask & MSPI_DEVICE_CONFIG_DATA_RATE)) {
-			mspi_mxic_set_line(dev, dev_cfg->io_mode, dev_cfg->data_rate);
+			mspi_mxic_set_line(dev, dev_cfg);
 
 			data->dev_cfg.freq      = dev_cfg->io_mode;
 			data->dev_cfg.data_rate = dev_cfg->data_rate;
@@ -385,7 +391,7 @@ static int mspi_mxic_dev_config(const struct device *dev,
 				goto e_return;
 			}
 
-			UPDATE_WRITE(TFR_MODE_ADDR_CNT_MASK, OP_ADDR_CNT(dev_cfg->addr_length), reg_base + TFR_CTRL);
+			UPDATE_WRITE(TFR_MODE_ADDR_CNT_MASK, OP_ADDR_CNT(dev_cfg->addr_length), reg_base + TFR_MODE);
 
 			data->dev_cfg.addr_length = dev_cfg->addr_length;
 		}
@@ -415,11 +421,11 @@ static int mspi_mxic_dev_config(const struct device *dev,
 		// 	goto e_return;
 		// }
 
-		mspi_mxic_set_line(dev, dev_cfg->io_mode, dev_cfg->data_rate);
+		mspi_mxic_set_line(dev, dev_cfg);
 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-		UPDATE_WRITE(TFR_MODE_CMD_CNT, OP_CMD_CNT(dev_cfg->cmd_length) ,  reg_base + TFR_MODE);
-		UPDATE_WRITE(TFR_MODE_ADDR_CNT_MASK, OP_ADDR_CNT(dev_cfg->addr_length),  reg_base + TFR_MODE);
+		// UPDATE_WRITE(TFR_MODE_CMD_CNT, OP_CMD_CNT(dev_cfg->cmd_length) ,  reg_base + TFR_MODE);
+		// UPDATE_WRITE(TFR_MODE_ADDR_CNT_MASK, OP_ADDR_CNT(dev_cfg->addr_length),  reg_base + TFR_MODE);
 
 		data->dev_cfg = *dev_cfg;
 		data->dev_id = (struct mspi_dev_id *)dev_id;
@@ -442,6 +448,7 @@ static int mspi_pio_prepare(const struct device *dev)
 
 	uint32_t conf = MXIC_RD32(reg_base + INT_STS_SIG_EN);
 	uint16_t dummy_len = DIR_IN == xfer->packets->dir ? xfer->rx_dummy : xfer->tx_dummy;
+	
 	conf &= ~(
 		TFR_MODE_ADDR_CNT_MASK |
 		TFR_MODE_CMD_CNT |
