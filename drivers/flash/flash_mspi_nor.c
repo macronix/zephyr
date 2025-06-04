@@ -44,13 +44,17 @@ static int dev_cfg_apply(const struct device *dev, const struct mspi_dev_cfg *cf
 {
 	const struct flash_mspi_nor_config *dev_config = dev->config;
 	struct flash_mspi_nor_data *dev_data = dev->data;
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if (dev_data->curr_cfg == cfg) {
 		return 0;
 	}
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	int rc = mspi_dev_config(dev_config->bus, &dev_config->mspi_id,
 				 MSPI_DEVICE_CONFIG_ALL, cfg);
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
 	if (rc < 0) {
 		LOG_ERR("Failed to set device config: %p error: %d", cfg, rc);
 	}
@@ -312,23 +316,28 @@ static int api_erase(const struct device *dev, off_t addr, size_t size)
 	struct flash_mspi_nor_data *dev_data = dev->data;
 	const uint32_t flash_size = dev_flash_size(dev);
 	int rc = 0;
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if ((addr < 0) || ((addr + size) > flash_size)) {
 		return -EINVAL;
 	}
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if (!SPI_NOR_IS_SECTOR_ALIGNED(addr)) {
 		return -EINVAL;
 	}
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if ((size % SPI_NOR_SECTOR_SIZE) != 0) {
 		return -EINVAL;
 	}
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	rc = acquire(dev);
 	if (rc < 0) {
 		return rc;
 	}
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	while (size > 0) {
 		rc = write_enable(dev);
@@ -336,6 +345,7 @@ static int api_erase(const struct device *dev, off_t addr, size_t size)
 			LOG_ERR("Write enable failed.");
 			break;
 		}
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 		if (size == flash_size) {
 			/* Chip erase. */
@@ -344,10 +354,12 @@ static int api_erase(const struct device *dev, off_t addr, size_t size)
 			} else {
 				rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
 			}
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 			if (rc < 0) {
 				return rc;
 			}
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 			flash_mspi_command_set(dev, &dev_config->jedec_cmds->chip_erase);
 			size -= flash_size;
@@ -358,10 +370,12 @@ static int api_erase(const struct device *dev, off_t addr, size_t size)
 			} else {
 				rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
 			}
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 			if (rc < 0) {
 				return rc;
 			}
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 			flash_mspi_command_set(dev, &dev_config->jedec_cmds->sector_erase);
 			dev_data->packet.address = addr;
@@ -375,12 +389,14 @@ static int api_erase(const struct device *dev, off_t addr, size_t size)
 				dev_data->packet.cmd, rc);
 			break;
 		}
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 		rc = wait_until_ready(dev, K_MSEC(1));
 		if (rc < 0) {
 			break;
 		}
 	}
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	release(dev);
 
@@ -636,31 +652,37 @@ static int flash_chip_init(const struct device *dev)
 	enum mspi_io_mode io_mode = dev_config->mspi_nor_cfg.io_mode;
 	uint8_t id[JESD216_READ_ID_LEN] = {0};
 	int rc;
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
+	printf ("***[%s], [%s], [%04d], io_mode is %x \r\n", __FILE__, __func__, __LINE__, io_mode);
+
 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
 
 	if (rc < 0) {
 		return rc;
 	}
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
 	/* Some chips reuse RESET pin for data in Quad modes:
 	 * force single line mode before resetting.
 	 */
 	if ((io_mode == MSPI_IO_MODE_SINGLE) || (io_mode == MSPI_IO_MODE_QUAD_1_1_4) ||
 	    (io_mode == MSPI_IO_MODE_QUAD_1_4_4)) {
-		rc = quad_enable_set(dev, false);
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-		if (rc < 0) {
-			LOG_ERR("Failed to switch to single line mode: %d", rc);
-			return rc;
-		}
+		// rc = quad_enable_set(dev, false);
 
-		rc = wait_until_ready(dev, K_USEC(1));
+		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-		if (rc < 0) {
-			LOG_ERR("Failed waiting for device after switch to single line: %d", rc);
-			return rc;
-		}
+		// if (rc < 0) {
+		// 	LOG_ERR("Failed to switch to single line mode: %d", rc);
+		// 	return rc;
+		// }
+
+		// rc = wait_until_ready(dev, K_USEC(1));
+
+		// if (rc < 0) {
+		// 	LOG_ERR("Failed waiting for device after switch to single line: %d", rc);
+		// 	return rc;
+		// }
 	}
 printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 #if defined(WITH_RESET_GPIO)
@@ -686,9 +708,8 @@ printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 		LOG_ERR("Failed to read JEDEC ID in initial line mode: %d", rc);
 		return rc;
 	}
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-	rc = default_io_mode(dev);
+	// rc = default_io_mode(dev);
 printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if (rc < 0) {
@@ -701,15 +722,21 @@ printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	 * since it switches back to single lane mode. Use ID from previous read.
 	 */
 	if (!dev_config->jedec_cmds->id.force_single) {
+		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
 		rc = read_jedec_id(dev, id);
 		if (rc < 0) {
 			LOG_ERR("Failed to read JEDEC ID in final line mode: %d", rc);
 			return rc;
 		}
 	}
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+printf ("***[%s], [%s], [%04d],dev_config->jedec_id is %x \r\n", __FILE__, __func__, __LINE__, dev_config->jedec_id[0]);
+
+		printf ("***[%s], [%s], [%04d], id is %x \r\n", __FILE__, __func__, __LINE__, id[0]);
 
 	if (memcmp(id, dev_config->jedec_id, sizeof(id)) != 0) {
+		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
 		LOG_ERR("JEDEC ID mismatch, read: %02x %02x %02x, "
 			"expected: %02x %02x %02x",
 			id[0], id[1], id[2],
@@ -757,9 +784,9 @@ static int drv_init(const struct device *dev)
 	/* Release the MSPI controller - it was acquired by the call to
 	 * mspi_dev_config() in flash_chip_init().
 	 */
-	(void)mspi_get_channel_status(dev_config->bus, 0);
+	// (void)mspi_get_channel_status(dev_config->bus, 0);
 
-	(void)pm_device_runtime_put(dev_config->bus);
+	// (void)pm_device_runtime_put(dev_config->bus);
 
 	if (rc < 0) {
 		return rc;
@@ -767,7 +794,8 @@ static int drv_init(const struct device *dev)
 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	k_sem_init(&dev_data->acquired, 1, K_SEM_MAX_LIMIT);
 
-	return pm_device_driver_init(dev, dev_pm_action_cb);
+	// return pm_device_driver_init(dev, dev_pm_action_cb);
+	return 0;
 }
 
 static DEVICE_API(flash, drv_api) = {

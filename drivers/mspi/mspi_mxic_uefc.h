@@ -539,8 +539,19 @@ enum HC_XFER_MODE_TYPE {
 
 #define MXIC_RD32(_reg) \
 	(*(volatile uint32_t *)(_reg))
+
 #define MXIC_WR32(_val, _reg) \
 	((*(uint32_t *)((_reg))) = (_val))
+
+int mxic_wr32 (uint32_t _val,  uint32_t *_reg) {
+
+		printf ("***[%s], [%s], [%04d], _reg is %x \r\n", __FILE__, __func__, __LINE__, _reg);
+
+	*_reg= (_val);
+
+		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+}
+
 #define UPDATE_WRITE(_mask, _value, _reg) \
 	MXIC_WR32(((_value) | (MXIC_RD32(_reg) & ~(_mask))), (_reg))
 

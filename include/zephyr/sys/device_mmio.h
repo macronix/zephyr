@@ -101,12 +101,9 @@ static inline void device_map(mm_reg_t *virt_addr, uintptr_t phys_addr,
 	/* Pass along flags and add that we want supervisor mode
 	 * read-write access.
 	 */
-	printf ("***[%s], [%s], [%04d],phys_addr ix %x, size is %x\r\n", __FILE__, __func__, __LINE__, phys_addr, size);
-	printf ("***[%s], [%s], [%04d],*virt_addr is %x \r\n", __FILE__, __func__, __LINE__, *virt_addr);
 
 	k_mem_map_phys_bare((uint8_t **)virt_addr, phys_addr, size,
 			    flags | K_MEM_PERM_RW);
-				 		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 #else
 	ARG_UNUSED(size);
@@ -114,10 +111,8 @@ static inline void device_map(mm_reg_t *virt_addr, uintptr_t phys_addr,
 #ifdef CONFIG_EXTERNAL_ADDRESS_TRANSLATION
 	sys_mm_drv_page_phys_get((void *) phys_addr, virt_addr);
 #else
- 		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	*virt_addr = phys_addr;
-	 		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 #endif /* CONFIG_EXTERNAL_ADDRESS_TRANSLATION */
 #endif /* CONFIG_MMU */

@@ -198,9 +198,12 @@ int main(void)
 	device_init(flash_dev);
 
 	if (!device_is_ready(flash_dev)) {
+			printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
 		printk("%s: device not ready.\n", flash_dev->name);
 		return 0;
 	}
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 // 	printf("\n%s SPI flash testing\n", flash_dev->name);
 // 	printf("==========================\n");
@@ -209,7 +212,7 @@ int main(void)
 // #if defined SPI_FLASH_MULTI_SECTOR_TEST
 // 	multi_sector_test(flash_dev);
 // #endif
-	return 0;
+	// return 0;
 
 
 // 	const struct device *flash_dev = DEVICE_DT_GET(DT_ALIAS(flash0));
@@ -220,16 +223,16 @@ int main(void)
 // 	}
 
 // 	printf("\n%s SPI flash testing\n", flash_dev->name);
-// 	printf("==========================\n");
+	printf("==========================\n");
 
-// 	if (single_sector_test(flash_dev)) {
-// 		return 1;
-// 	}
+	if (single_sector_test(flash_dev)) {
+		return 1;
+	}
 // #if defined SPI_FLASH_MULTI_SECTOR_TEST
 // 	if (multi_sector_test(flash_dev)) {
 // 		return 1;
 // 	}
 // #endif
-// 	printf("==========================\n");
-// 	return 0;
+	printf("==========================\n");
+	return 0;
 }
