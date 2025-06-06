@@ -298,17 +298,18 @@ static void mspi_mxic_set_line(const struct device *dev, const struct mspi_dev_c
 	addr_bus = addr_lines == 1 ? 0 : addr_lines == 2 ? 1 : addr_lines == 4 ? 2 : 3;
 	data_bus = data_lines == 1 ? 0 : data_lines == 2 ? 1 : data_lines == 4 ? 2 : 3;
 
-	uint32_t conf = MXIC_RD32(reg_base + INT_STS_SIG_EN);
+printf ("***[%s], [%s], [%04d], dev_cfg->cmd_length is %x \r\n", __FILE__, __func__, __LINE__, dev_cfg->cmd_length);
+printf ("***[%s], [%s], [%04d], dev_cfg->addr_length is %x \r\n", __FILE__, __func__, __LINE__, dev_cfg->addr_length);
 
-	conf &= ~(TFR_MODE_CMD_BUSW_MASK | TFR_MODE_ADDR_BUSW_MASK | TFR_MODE_DATA_BUSW_MASK |
-		  TFR_MODE_DATA_DTR | TFR_MODE_ADDR_DTR | TFR_MODE_CMD_DTR);
+	uint32_t conf = OP_CMD_BUSW(cmd_bus) | OP_CMD_DTR(cmd_ddr ? 1 : 0);
+ 		printf ("***[%s], [%s], [%04d], mspi_mxic_set_line conf is %x \r\n", __FILE__, __func__, __LINE__, conf);
 
-	conf = OP_CMD_CNT(dev_cfg->cmd_length) | OP_CMD_BUSW(cmd_bus) | OP_CMD_DTR(cmd_ddr ? 1 : 0);
-
-	conf |= OP_ADDR_CNT(dev_cfg->addr_length) | OP_ADDR_BUSW(addr_bus) |
+	conf |= OP_ADDR_BUSW(addr_bus) |
 		OP_ADDR_DTR(addr_ddr ? 1 : 0);
+ 		printf ("***[%s], [%s], [%04d], mspi_mxic_set_line conf is %x \r\n", __FILE__, __func__, __LINE__, conf);
 
 	conf |= OP_DATA_BUSW(data_bus) | OP_DATA_DTR(data_ddr ? 1 : 0);
+ 		printf ("***[%s], [%s], [%04d], mspi_mxic_set_line conf is %x \r\n", __FILE__, __func__, __LINE__, conf);
 
 	data->data_buswidth = data_lines;
 	data->data_dtr = data_ddr;
@@ -332,101 +333,6 @@ static int mspi_mxic_dev_config(const struct device *dev, const struct mspi_dev_
 	int ret = 0;
 	printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-	if (param_mask == MSPI_DEVICE_CONFIG_NONE) {
-		/* Do nothing except obtaining the controller lock */
-		data->dev_id = (struct mspi_dev_id *)dev_id;
-		return ret;
-		printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
-	} else if (param_mask != MSPI_DEVICE_CONFIG_ALL) {
-		if (data->dev_id != dev_id) {
-			// LOG_INST_ERR(cfg->log, "%u, config failed, must be the same device.",
-			// 	     __LINE__);
-			ret = -ENOTSUP;
-			goto e_return;
-		}
-		printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
-		if ((param_mask & (~(MSPI_DEVICE_CONFIG_FREQUENCY | MSPI_DEVICE_CONFIG_IO_MODE |
-				     MSPI_DEVICE_CONFIG_CE_NUM | MSPI_DEVICE_CONFIG_DATA_RATE |
-				     MSPI_DEVICE_CONFIG_CMD_LEN | MSPI_DEVICE_CONFIG_ADDR_LEN)))) {
-			// LOG_INST_ERR(cfg->log, "%u, config type not supported.", __LINE__);
-			ret = -ENOTSUP;
-			goto e_return;
-		}
-		printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
-		if (param_mask & MSPI_DEVICE_CONFIG_FREQUENCY) {
-			UPDATE_WRITE(DEV_CTRL_SCLK_SEL_MASK, DEV_CTRL_SCLK_SEL_DIV(4),
-				     reg_base + DEV_CTRL);
-			data->dev_cfg.freq = dev_cfg->freq;
-		}
-		printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
-		if ((param_mask & MSPI_DEVICE_CONFIG_IO_MODE) ||
-		    (param_mask & MSPI_DEVICE_CONFIG_CE_NUM) ||
-		    (param_mask & MSPI_DEVICE_CONFIG_DATA_RATE)) {
-			mspi_mxic_set_line(dev, dev_cfg);
-
-			data->dev_cfg.freq = dev_cfg->io_mode;
-			data->dev_cfg.data_rate = dev_cfg->data_rate;
-		}
-		printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
-		if (param_mask & MSPI_DEVICE_CONFIG_CMD_LEN) {
-			if (dev_cfg->cmd_length > MXIC_UEFC_CMD_LENGTH ||
-			    dev_cfg->cmd_length == 0) {
-				// LOG_INST_ERR(cfg->log, "%u, invalid cmd_length.", __LINE__);
-				ret = -ENOTSUP;
-				goto e_return;
-			}
-
-			UPDATE_WRITE(TFR_MODE_CMD_CNT, OP_CMD_CNT(dev_cfg->cmd_length),
-				     reg_base + TFR_MODE);
-
-			data->dev_cfg.cmd_length = dev_cfg->cmd_length;
-		}
-		printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
-		if (param_mask & MSPI_DEVICE_CONFIG_ADDR_LEN) {
-			if (dev_cfg->addr_length > MXIC_UEFC_ADDR_LENGTH ||
-			    dev_cfg->addr_length == 0) {
-				// LOG_INST_ERR(cfg->log, "%u, invalid addr_length.", __LINE__);
-				ret = -ENOTSUP;
-				goto e_return;
-			}
-
-			UPDATE_WRITE(TFR_MODE_ADDR_CNT_MASK, OP_ADDR_CNT(dev_cfg->addr_length),
-				     reg_base + TFR_MODE);
-
-			data->dev_cfg.addr_length = dev_cfg->addr_length;
-		}
-	} else {
-		if (data->dev_id != dev_id) {
-			goto e_return;
-		}
-		printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
-		// if (memcmp(&data->dev_cfg, dev_cfg, sizeof(struct mspi_dev_cfg)) == 0) {
-		// 	/** Nothing to config */
-		// 	data->dev_id = (struct mspi_dev_id *)dev_id;
-		// 	return ret;
-		// }
-		printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
-		if (dev_cfg->endian != MSPI_XFER_LITTLE_ENDIAN) {
-			// LOG_INST_ERR(cfg->log, "%u, only support MSB first.", __LINE__);
-			ret = -ENOTSUP;
-			goto e_return;
-		}
-		printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
-		// if (dev_cfg->dqs_enable && !cfg->mspicfg.dqs_support) {
-		// 	// LOG_INST_ERR(cfg->log, "%u, only support non-DQS mode.", __LINE__);
-		// 	ret = -ENOTSUP;
-		// 	goto e_return;
-		// }
-
 		mspi_mxic_set_line(dev, dev_cfg);
 		printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
@@ -436,7 +342,6 @@ static int mspi_mxic_dev_config(const struct device *dev, const struct mspi_dev_
 
 		data->dev_cfg = *dev_cfg;
 		data->dev_id = (struct mspi_dev_id *)dev_id;
-	}
 
 	return ret;
 
@@ -445,29 +350,43 @@ e_return:
 	return ret;
 }
 
-static int mspi_pio_prepare(const struct device *dev)
+static int mspi_pio_prepare(const struct device *dev, struct mspi_xfer *xfer)
 {
 	const struct mspi_mxic_config *cfg = dev->config;
 
 	struct mspi_mxic_data *data = dev->data;
 
-	const struct mspi_xfer *xfer = &data->ctx.xfer;
-
 	int ret = 0;
 	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
 
-	uint32_t conf = MXIC_RD32(reg_base + INT_STS_SIG_EN);
+	uint32_t conf = MXIC_RD32(reg_base + TFR_MODE);
+
+	uint32_t conf_1 = 0;
+
+	printf ("***[%s], [%s], [%04d], mspi_pio_prepare conf is %x \r\n", __FILE__, __func__, __LINE__, conf);
+
 	uint16_t dummy_len = DIR_IN == xfer->packets->dir ? xfer->rx_dummy : xfer->tx_dummy;
 
 	conf &= ~(TFR_MODE_ADDR_CNT_MASK | TFR_MODE_CMD_CNT | TFR_MODE_DMY_MASK | OP_DD_RD);
+	printf ("***[%s], [%s], [%04d], mspi_pio_prepare confi is %x \r\n", __FILE__, __func__, __LINE__, conf);
+
+
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	conf |= OP_CMD_CNT(xfer->cmd_length) | OP_ADDR_CNT(xfer->addr_length);
+	printf ("***[%s], [%s], [%04d], mspi_pio_prepare confi is %x \r\n", __FILE__, __func__, __LINE__, conf);
+
+	conf_1 = OP_DMY_CNT(dummy_len, data->data_dtr, data->data_buswidth);
+	printf ("***[%s], [%s], [%04d], mspi_pio_prepare conf_1 is %x \r\n", __FILE__, __func__, __LINE__, conf_1);
 
 	conf |= OP_DMY_CNT(dummy_len, data->data_dtr, data->data_buswidth);
+	printf ("***[%s], [%s], [%04d], mspi_pio_prepare confi is %x \r\n", __FILE__, __func__, __LINE__, conf);
 
 	conf |= (DIR_IN == xfer->packets->dir ? OP_DD_RD : 0);
+	printf ("***[%s], [%s], [%04d], mspi_pio_prepare confi is %x \r\n", __FILE__, __func__, __LINE__, conf);
 
 	MXIC_WR32(conf, reg_base + TFR_MODE);
+	printf ("***[%s], [%s], [%04d], mspi_pio_prepare confi is %x \r\n", __FILE__, __func__, __LINE__, conf);
 
 	return ret;
 }
@@ -482,9 +401,7 @@ static int mspi_pio_transceive(const struct device *dev, const struct mspi_xfer 
 	uint32_t packet_idx;
 	int ret = 0;
 
-	if (xfer->num_packet == 0 || !xfer->packets) {
-		return -EFAULT;
-	}
+	mspi_pio_prepare(dev, xfer);
 
 	mxic_uefc_cs_start(dev);
 
@@ -502,9 +419,12 @@ static int mspi_pio_transceive(const struct device *dev, const struct mspi_xfer 
 
 	/* Set up address */
 	if (xfer->addr_length) {
-		ret = mxic_uefc_io_mode_xfer(dev, (uint8_t *)&xfer->packets->address, 0,
+		uint32_t addr = swap32(xfer->packets->address,  xfer->addr_length);
+
+		ret = mxic_uefc_io_mode_xfer(dev, (uint8_t *)&addr, 0,
 					     xfer->addr_length, 0);
-		printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
+		printf("***[%s], [%s], [%04d], xfer->addr_length is %x\r\n", __FILE__, __func__, __LINE__, xfer->addr_length);
 
 		if (EXIT_SUCCESS != ret) {
 			mxic_uefc_err_dessert_cs(dev);
@@ -563,17 +483,8 @@ static int mspi_mxic_transceive(const struct device *dev, const struct mspi_dev_
 	mspi_callback_handler_t cb = NULL;
 	struct mspi_callback_context *cb_ctx = NULL;
 
-	// if (dev_id != data->dev_id) {
-	// 	// LOG_INST_ERR(cfg->log, "%u, dev_id don't match.", __LINE__);
-	// 	return -ESTALE;
-	// }
-
-	if (xfer->async) {
-		cb = data->cbs[MSPI_BUS_XFER_COMPLETE];
-		cb_ctx = data->cb_ctxs[MSPI_BUS_XFER_COMPLETE];
-	}
-
 	if (xfer->xfer_mode == MSPI_PIO) {
+ 		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 		return mspi_pio_transceive(dev, xfer, cb, cb_ctx);
 	} else if (xfer->xfer_mode == MSPI_DMA) {

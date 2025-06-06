@@ -98,9 +98,9 @@ static void release(const struct device *dev)
 	struct flash_mspi_nor_data *dev_data = dev->data;
 
 	/* This releases the MSPI controller. */
-	(void)mspi_get_channel_status(dev_config->bus, 0);
+	// (void)mspi_get_channel_status(dev_config->bus, 0);
 
-	(void)pm_device_runtime_put(dev_config->bus);
+	// (void)pm_device_runtime_put(dev_config->bus);
 
 	k_sem_give(&dev_data->acquired);
 }
@@ -347,41 +347,23 @@ static int api_erase(const struct device *dev, off_t addr, size_t size)
 		}
 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-		if (size == flash_size) {
-			/* Chip erase. */
-			// if (dev_config->jedec_cmds->chip_erase.force_single) {
-			// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
-			// } else {
-			// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
-			// }
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
-			if (rc < 0) {
-				return rc;
-			}
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
-			flash_mspi_command_set(dev, &dev_config->jedec_cmds->chip_erase);
-			size -= flash_size;
-		} else {
 			/* Sector erase. */
 			// if (dev_config->jedec_cmds->sector_erase.force_single) {
 			// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
 			// } else {
 			// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
 			// }
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 			if (rc < 0) {
 				return rc;
 			}
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+			printf ("***[%s], [%s], [%04d], addr is %x \r\n", __FILE__, __func__, __LINE__, addr);
 
 			flash_mspi_command_set(dev, &dev_config->jedec_cmds->sector_erase);
 			dev_data->packet.address = addr;
 			addr += SPI_NOR_SECTOR_SIZE;
 			size -= SPI_NOR_SECTOR_SIZE;
-		}
+
 		rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
 				     &dev_data->xfer);
 		if (rc < 0) {
@@ -399,6 +381,7 @@ static int api_erase(const struct device *dev, off_t addr, size_t size)
 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	release(dev);
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	return rc;
 }
@@ -444,76 +427,6 @@ static int read_jedec_id(const struct device *dev, uint8_t *id)
 
 	return rc;
 }
-
-#if defined(CONFIG_FLASH_PAGE_LAYOUT)
-static void api_page_layout(const struct device *dev,
-			     const struct flash_pages_layout **layout,
-			     size_t *layout_size)
-{
-	const struct flash_mspi_nor_config *dev_config = dev->config;
-
-	*layout = &dev_config->layout;
-	*layout_size = 1;
-}
-#endif /* CONFIG_FLASH_PAGE_LAYOUT */
-
-#if defined(CONFIG_FLASH_JESD216_API)
-static int api_sfdp_read(const struct device *dev, off_t addr, void *dest,
-			 size_t size)
-{
-	const struct flash_mspi_nor_config *dev_config = dev->config;
-	struct flash_mspi_nor_data *dev_data = dev->data;
-	int rc;
-
-	if (size == 0) {
-		return 0;
-	}
-
-	rc = acquire(dev);
-	if (rc < 0) {
-		return rc;
-	}
-
-	if (dev_config->jedec_cmds->sfdp.force_single) {
-		rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
-	} else {
-		rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
-	}
-
-	if (rc < 0) {
-		return rc;
-	}
-
-	flash_mspi_command_set(dev, &dev_config->jedec_cmds->sfdp);
-	dev_data->packet.address   = addr;
-	dev_data->packet.data_buf  = dest;
-	dev_data->packet.num_bytes = size;
-	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
-			     &dev_data->xfer);
-	if (rc < 0) {
-		printk("Read SFDP xfer failed: %d\n", rc);
-		return rc;
-	}
-
-	release(dev);
-
-	return rc;
-}
-
-static int api_read_jedec_id(const struct device *dev, uint8_t *id)
-{
-	int rc = acquire(dev);
-	if (rc < 0) {
-		return rc;
-	}
-
-	rc = read_jedec_id(dev, id);
-
-	release(dev);
-
-	return rc;
-}
-#endif /* CONFIG_FLASH_JESD216_API  */
 
 static int dev_pm_action_cb(const struct device *dev,
 			    enum pm_device_action action)
@@ -606,45 +519,6 @@ static int default_io_mode(const struct device *dev)
 	return dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
 }
 
-#if defined(WITH_RESET_GPIO)
-static int gpio_reset(const struct device *dev)
-{
-	const struct flash_mspi_nor_config *dev_config = dev->config;
-	int rc;
-
-	if (dev_config->reset.port) {
-		if (!gpio_is_ready_dt(&dev_config->reset)) {
-			LOG_ERR("Device %s is not ready",
-				dev_config->reset.port->name);
-			return -ENODEV;
-		}
-
-		rc = gpio_pin_configure_dt(&dev_config->reset,
-					   GPIO_OUTPUT_ACTIVE);
-		if (rc < 0) {
-			LOG_ERR("Failed to activate RESET: %d", rc);
-			return -EIO;
-		}
-
-		if (dev_config->reset_pulse_us != 0) {
-			k_busy_wait(dev_config->reset_pulse_us);
-		}
-
-		rc = gpio_pin_set_dt(&dev_config->reset, 0);
-		if (rc < 0) {
-			LOG_ERR("Failed to deactivate RESET: %d", rc);
-			return -EIO;
-		}
-
-		if (dev_config->reset_recovery_us != 0) {
-			k_busy_wait(dev_config->reset_recovery_us);
-		}
-	}
-
-	return 0;
-}
-#endif
-
 static int flash_chip_init(const struct device *dev)
 {
 	const struct flash_mspi_nor_config *dev_config = dev->config;
@@ -660,40 +534,6 @@ static int flash_chip_init(const struct device *dev)
 	if (rc < 0) {
 		return rc;
 	}
-
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
-	/* Some chips reuse RESET pin for data in Quad modes:
-	 * force single line mode before resetting.
-	 */
-	if ((io_mode == MSPI_IO_MODE_SINGLE) || (io_mode == MSPI_IO_MODE_QUAD_1_1_4) ||
-	    (io_mode == MSPI_IO_MODE_QUAD_1_4_4)) {
-		// rc = quad_enable_set(dev, false);
-
-		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
-		// if (rc < 0) {
-		// 	LOG_ERR("Failed to switch to single line mode: %d", rc);
-		// 	return rc;
-		// }
-
-		// rc = wait_until_ready(dev, K_USEC(1));
-
-		// if (rc < 0) {
-		// 	LOG_ERR("Failed waiting for device after switch to single line: %d", rc);
-		// 	return rc;
-		// }
-	}
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-#if defined(WITH_RESET_GPIO)
-	rc = gpio_reset(dev);
-
-	if (rc < 0) {
-		LOG_ERR("Failed to reset with GPIO: %d", rc);
-		return rc;
-	}
-#endif
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	flash_mspi_command_set(dev, &commands_single.id);
 	dev_data->packet.data_buf  = id;
@@ -772,7 +612,6 @@ static int drv_init(const struct device *dev)
 		LOG_ERR("Device %s is not ready", dev_config->bus->name);
 		return -ENODEV;
 	}
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	rc = pm_device_runtime_get(dev_config->bus);
 	if (rc < 0) {
 		LOG_ERR("pm_device_runtime_get() failed: %d", rc);
@@ -791,7 +630,6 @@ static int drv_init(const struct device *dev)
 	if (rc < 0) {
 		return rc;
 	}
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	k_sem_init(&dev_data->acquired, 1, K_SEM_MAX_LIMIT);
 
 	// return pm_device_driver_init(dev, dev_pm_action_cb);
@@ -803,13 +641,6 @@ static DEVICE_API(flash, drv_api) = {
 	.write = api_write,
 	.erase = api_erase,
 	.get_parameters = api_get_parameters,
-#if defined(CONFIG_FLASH_PAGE_LAYOUT)
-	.page_layout = api_page_layout,
-#endif
-#if defined(CONFIG_FLASH_JESD216_API)
-	.sfdp_read = api_sfdp_read,
-	.read_jedec_id = api_read_jedec_id,
-#endif
 };
 
 #define FLASH_INITIAL_CONFIG(inst)					\
@@ -819,7 +650,7 @@ static DEVICE_API(flash, drv_api) = {
 	.io_mode = MSPI_IO_MODE_SINGLE,					\
 	.data_rate = MSPI_DATA_RATE_SINGLE,				\
 	.cpp = MSPI_CPP_MODE_0,						\
-	.endian = MSPI_XFER_BIG_ENDIAN,					\
+	.endian = MSPI_XFER_LITTLE_ENDIAN,					\
 	.ce_polarity = MSPI_CE_ACTIVE_LOW,				\
 	.dqs_enable = false,						\
 }

@@ -14,6 +14,7 @@
 #include <zephyr/sys_clock.h>
 #include <stdlib.h>
 #include <zephyr/irq.h>
+#include <zephyr/sys/byteorder.h>
 
 enum HC_XFER_MODE_TYPE {
 	HC_XFER_MODE_IO,
@@ -550,6 +551,23 @@ int mxic_wr32 (uint32_t _val,  uint32_t *_reg) {
 	*_reg= (_val);
 
 		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+}
+
+uint32_t swap32(uint32_t val, uint8_t nbytes)
+{
+	uint32_t ret = 0;
+	int n = 0;
+
+	if (nbytes > 4 || nbytes < 1) {
+		return -1;
+	}
+
+	while (n < nbytes) {
+		ret |= ((val >> (n * 8)) & 0xff) << ((nbytes -n -1) * 8);
+		n++;
+	}
+
+	return ret;
 }
 
 #define UPDATE_WRITE(_mask, _value, _reg) \
