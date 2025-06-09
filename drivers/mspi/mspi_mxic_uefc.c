@@ -22,11 +22,36 @@ struct mspi_mxic_config {
 	DEVICE_MMIO_ROM;
 };
 
+#if defined(CONFIG_MSPI_XIP)
+struct xip_params {
+	uint32_t read_cmd;
+	uint32_t write_cmd;
+	uint16_t rx_dummy;
+	uint16_t tx_dummy;
+	uint8_t cmd_length;
+	uint8_t addr_length;
+	enum mspi_io_mode io_mode;
+};
+
+struct xip_ctrl {
+	uint32_t read;
+	uint32_t write;
+};
+#endif
+
 struct mspi_mxic_data {
 	DEVICE_MMIO_RAM;
 
 	struct mspi_dev_id *dev_id;
 	struct k_mutex lock;
+
+#if defined(CONFIG_MSPI_XIP)
+	uint32_t xip_freq;
+	struct xip_params xip_params_stored;
+	struct xip_params xip_params_active;
+	uint16_t xip_enabled;
+	enum mspi_cpp_mode xip_cpp;
+#endif
 
 	struct mspi_dev_cfg dev_cfg;
 	struct mspi_xip_cfg xip_cfg;
@@ -317,12 +342,6 @@ printf ("***[%s], [%s], [%04d], dev_cfg->addr_length is %x \r\n", __FILE__, __fu
 	MXIC_WR32(conf, reg_base + TFR_MODE);
 }
 
-static inline void mspi_context_release(struct mspi_context *ctx)
-{
-	ctx->owner = NULL;
-	k_sem_give(&ctx->lock);
-}
-
 static int mspi_mxic_dev_config(const struct device *dev, const struct mspi_dev_id *dev_id,
 				const enum mspi_dev_cfg_mask param_mask,
 				const struct mspi_dev_cfg *dev_cfg)
@@ -331,22 +350,12 @@ static int mspi_mxic_dev_config(const struct device *dev, const struct mspi_dev_
 	struct mspi_mxic_data *data = dev->data;
 	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
 	int ret = 0;
-	printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-		mspi_mxic_set_line(dev, dev_cfg);
-		printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+	mspi_mxic_set_line(dev, dev_cfg);
 
-		// UPDATE_WRITE(TFR_MODE_CMD_CNT, OP_CMD_CNT(dev_cfg->cmd_length) ,  reg_base +
-		// TFR_MODE); UPDATE_WRITE(TFR_MODE_ADDR_CNT_MASK,
-		// OP_ADDR_CNT(dev_cfg->addr_length),  reg_base + TFR_MODE);
+	data->dev_cfg = *dev_cfg;
+	data->dev_id = (struct mspi_dev_id *)dev_id;
 
-		data->dev_cfg = *dev_cfg;
-		data->dev_id = (struct mspi_dev_id *)dev_id;
-
-	return ret;
-
-e_return:
-	k_mutex_unlock(&data->lock);
 	return ret;
 }
 
@@ -389,6 +398,18 @@ static int mspi_pio_prepare(const struct device *dev, struct mspi_xfer *xfer)
 	printf ("***[%s], [%s], [%04d], mspi_pio_prepare confi is %x \r\n", __FILE__, __func__, __LINE__, conf);
 
 	return ret;
+}
+
+static int api_xip_config(const struct device *dev,
+			  const struct mspi_dev_id *dev_id,
+			  const struct mspi_xip_cfg *cfg)
+{
+	struct mspi_dw_data *dev_data = dev->data;
+
+	/* End IO Mode */
+	MXIC_WR32(TFR_CTRL_IO_END, reg_base + TFR_CTRL);
+
+	return 0;
 }
 
 static int mspi_pio_transceive(const struct device *dev, const struct mspi_xfer *xfer,
@@ -470,8 +491,6 @@ static int mspi_pio_transceive(const struct device *dev, const struct mspi_xfer 
 	mxic_uefc_cs_end(dev);
 	printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-pio_err:
-	mspi_context_release(ctx);
 	return ret;
 }
 
@@ -494,14 +513,8 @@ static int mspi_mxic_transceive(const struct device *dev, const struct mspi_dev_
 	}
 }
 
-static int mspi_mxic_config(const struct mspi_dt_spec *spec)
-{
-	ARG_UNUSED(spec);
-	return -ENOTSUP;
-}
-
 static struct mspi_driver_api mspi_mxic_driver_api = {
-	.config = mspi_mxic_config,
+	// .config = mspi_mxic_config,
 	.dev_config = mspi_mxic_dev_config,
 	//.get_channel_status    = mspi_mxic_get_channel_status,
 	// .register_callback     = mspi_mxic_register_callback,

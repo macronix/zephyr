@@ -545,12 +545,7 @@ enum HC_XFER_MODE_TYPE {
 	((*(uint32_t *)((_reg))) = (_val))
 
 int mxic_wr32 (uint32_t _val,  uint32_t *_reg) {
-
-		printf ("***[%s], [%s], [%04d], _reg is %x \r\n", __FILE__, __func__, __LINE__, _reg);
-
 	*_reg= (_val);
-
-		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 }
 
 uint32_t swap32(uint32_t val, uint8_t nbytes)

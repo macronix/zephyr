@@ -25,10 +25,23 @@
 
 int single_sector_test(const struct device *flash_dev)
 {
-	const uint8_t expected[] = { 0x55, 0xaa, 0x66, 0x99 };
-	const size_t len = sizeof(expected);
-	uint8_t buf[sizeof(expected)];
+	// const uint8_t expected[] = { 0x55, 0xaa, 0x66, 0x99 };
+	// const size_t len = sizeof(expected);
+	// uint8_t buf[sizeof(expected)];
+	// int rc;
+
+
+	const size_t len = SPI_FLASH_SECTOR_SIZE;
+	uint8_t buf[SPI_FLASH_SECTOR_SIZE];
 	int rc;
+	uint8_t *buf_wr = (uint8_t * )malloc (SPI_FLASH_SECTOR_SIZE);
+	uint8_t *erased = (uint8_t * )malloc (SPI_FLASH_SECTOR_SIZE);
+
+	memset (erased, 0xff, SPI_FLASH_SECTOR_SIZE);
+	for (int n = 0; n < SPI_FLASH_SECTOR_SIZE; n++) {
+		buf_wr[n] = rand() % 0x100;
+	}
+
 
 	printf("\nPerform test on single sector");
 	/* Write protection needs to be disabled before each write or
@@ -52,7 +65,7 @@ int single_sector_test(const struct device *flash_dev)
 	printf("\nTest 2: Flash write\n");
 
 	printf("Attempting to write %zu bytes\n", len);
-	rc = flash_write(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, expected, len);
+	rc = flash_write(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, buf_wr, len);
 	if (rc != 0) {
 		printf("Flash write failed! %d\n", rc);
 		return 1;
@@ -65,10 +78,10 @@ int single_sector_test(const struct device *flash_dev)
 		return 1;
 	}
 
-	if (memcmp(expected, buf, len) == 0) {
+	if (memcmp(buf_wr, buf, len) == 0) {
 		printf("Data read matches data written. Good!!\n");
 	} else {
-		const uint8_t *wp = expected;
+		const uint8_t *wp = buf_wr;
 		const uint8_t *rp = buf;
 		const uint8_t *rpe = rp + len;
 
@@ -87,10 +100,21 @@ int single_sector_test(const struct device *flash_dev)
 #if defined SPI_FLASH_MULTI_SECTOR_TEST
 int multi_sector_test(const struct device *flash_dev)
 {
-	const uint8_t expected[] = { 0x55, 0xaa, 0x66, 0x99 };
-	const size_t len = sizeof(expected);
-	uint8_t buf[sizeof(expected)];
+	// const uint8_t expected[] = { 0x55, 0xaa, 0x66, 0x99 };
+	// const size_t len = sizeof(expected);
+	// uint8_t buf[sizeof(expected)];
+	// int rc;
+
+	const size_t len = sizeof(SPI_FLASH_SECTOR_SIZE);
+	uint8_t buf[SPI_FLASH_SECTOR_SIZE];
 	int rc;
+	uint8_t *buf_wr = (uint8_t * )malloc (SPI_FLASH_SECTOR_SIZE);
+	uint8_t *erased = (uint8_t * )malloc (SPI_FLASH_SECTOR_SIZE);
+
+	memset (erased, 0xff, SPI_FLASH_SECTOR_SIZE);
+	for (int n = 0; n < SPI_FLASH_SECTOR_SIZE; n++) {
+		buf_wr[n] = rand() % 0x100;
+	}
 
 	printf("\nPerform test on multiple consequtive sectors");
 
@@ -135,7 +159,7 @@ int multi_sector_test(const struct device *flash_dev)
 
 	while (offs < SPI_FLASH_TEST_REGION_OFFSET + 2 * SPI_FLASH_SECTOR_SIZE) {
 		printf("Attempting to write %zu bytes at offset 0x%x\n", len, offs);
-		rc = flash_write(flash_dev, offs, expected, len);
+		rc = flash_write(flash_dev, offs, buf_wr, len);
 		if (rc != 0) {
 			printf("Flash write failed! %d\n", rc);
 			return 1;
@@ -148,10 +172,10 @@ int multi_sector_test(const struct device *flash_dev)
 			return 1;
 		}
 
-		if (memcmp(expected, buf, len) == 0) {
+		if (memcmp(buf_wr, buf, len) == 0) {
 			printf("Data read matches data written. Good!!\n");
 		} else {
-			const uint8_t *wp = expected;
+			const uint8_t *wp = buf_wr;
 			const uint8_t *rp = buf;
 			const uint8_t *rpe = rp + len;
 
