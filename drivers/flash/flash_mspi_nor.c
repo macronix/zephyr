@@ -44,16 +44,16 @@ static int dev_cfg_apply(const struct device *dev, const struct mspi_dev_cfg *cf
 {
 	const struct flash_mspi_nor_config *dev_config = dev->config;
 	struct flash_mspi_nor_data *dev_data = dev->data;
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if (dev_data->curr_cfg == cfg) {
 		return 0;
 	}
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	int rc = mspi_dev_config(dev_config->bus, &dev_config->mspi_id,
 				 MSPI_DEVICE_CONFIG_ALL, cfg);
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if (rc < 0) {
 		LOG_ERR("Failed to set device config: %p error: %d", cfg, rc);
@@ -316,28 +316,23 @@ static int api_erase(const struct device *dev, off_t addr, size_t size)
 	struct flash_mspi_nor_data *dev_data = dev->data;
 	const uint32_t flash_size = dev_flash_size(dev);
 	int rc = 0;
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if ((addr < 0) || ((addr + size) > flash_size)) {
 		return -EINVAL;
 	}
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if (!SPI_NOR_IS_SECTOR_ALIGNED(addr)) {
 		return -EINVAL;
 	}
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if ((size % SPI_NOR_SECTOR_SIZE) != 0) {
 		return -EINVAL;
 	}
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	rc = acquire(dev);
 	if (rc < 0) {
 		return rc;
 	}
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	while (size > 0) {
 		rc = write_enable(dev);
@@ -345,7 +340,6 @@ static int api_erase(const struct device *dev, off_t addr, size_t size)
 			LOG_ERR("Write enable failed.");
 			break;
 		}
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 			/* Sector erase. */
 			// if (dev_config->jedec_cmds->sector_erase.force_single) {
@@ -357,7 +351,6 @@ static int api_erase(const struct device *dev, off_t addr, size_t size)
 			if (rc < 0) {
 				return rc;
 			}
-			printf ("***[%s], [%s], [%04d], addr is %x \r\n", __FILE__, __func__, __LINE__, addr);
 
 			flash_mspi_command_set(dev, &dev_config->jedec_cmds->sector_erase);
 			dev_data->packet.address = addr;
@@ -371,18 +364,14 @@ static int api_erase(const struct device *dev, off_t addr, size_t size)
 				dev_data->packet.cmd, rc);
 			break;
 		}
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 		rc = wait_until_ready(dev, K_MSEC(1));
 		if (rc < 0) {
 			break;
 		}
 	}
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	release(dev);
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
 	return rc;
 }
 
@@ -443,6 +432,34 @@ static int dev_pm_action_cb(const struct device *dev,
 	return 0;
 }
 
+static int octal_enable_set(const struct device *dev)
+{
+	const struct flash_mspi_nor_config *dev_config = dev->config;
+	struct flash_mspi_nor_data *dev_data = dev->data;
+	int rc;
+
+	flash_mspi_command_set(dev, &commands_single.write_en);
+
+	// There is no need to define data_buf and num_bytes, only command code valid.
+	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+			     &dev_data->xfer);
+	if (rc < 0) {
+		LOG_ERR("Failed to set write enable: %d", rc);
+		return rc;
+	}
+
+	uint8_t value = 0x02;
+	uint32_t addr = 0;
+	flash_mspi_command_set(dev, &commands_single.wrcr2);
+
+	dev_data->packet.data_buf  = &value;
+	dev_data->packet.address  = addr;
+	dev_data->packet.num_bytes = 1;
+
+	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+			     &dev_data->xfer);
+}
+
 static int quad_enable_set(const struct device *dev, bool enable)
 {
 	const struct flash_mspi_nor_config *dev_config = dev->config;
@@ -489,34 +506,30 @@ static int quad_enable_set(const struct device *dev, bool enable)
 	return 0;
 }
 
-
 static int default_io_mode(const struct device *dev)
 {
 	const struct flash_mspi_nor_config *dev_config = dev->config;
+	struct flash_mspi_nor_data *dev_data = dev->data;
 	enum mspi_io_mode io_mode = dev_config->mspi_nor_cfg.io_mode;
 	int rc = 0;
 
-	/* For Quad 1-1-4 and 1-4-4, entering or leaving mode is defined in JEDEC216 BFP DW15 QER */
-	if (io_mode == MSPI_IO_MODE_SINGLE) {
-		rc = quad_enable_set(dev, false);
-	} else if ((io_mode == MSPI_IO_MODE_QUAD_1_1_4) || (io_mode == MSPI_IO_MODE_QUAD_1_4_4)) {
-		rc = quad_enable_set(dev, true);
-	}
+	rc = octal_enable_set(dev);
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-	if (rc < 0) {
-		LOG_ERR("Failed to modify Quad Enable bit: %d", rc);
-	}
+	dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-	if ((dev_config->quirks != NULL) && (dev_config->quirks->post_switch_mode != NULL)) {
-		rc = dev_config->quirks->post_switch_mode(dev);
-	}
+	uint32_t read_id = 0;
+	uint32_t addr_1 = 0;
+	flash_mspi_command_set(dev, &commands_octal.id);
 
-	if (rc < 0) {
-		LOG_ERR("Failed to change IO mode: %d\n", rc);
-		return rc;
-	}
+	dev_data->packet.data_buf  = &read_id;
+	dev_data->packet.address  = addr_1;
+	dev_data->packet.num_bytes = 3;
+	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+			     &dev_data->xfer);
 
-	return dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
+	return 0;
 }
 
 static int flash_chip_init(const struct device *dev)
@@ -527,7 +540,6 @@ static int flash_chip_init(const struct device *dev)
 	uint8_t id[JESD216_READ_ID_LEN] = {0};
 	int rc;
 
-	printf ("***[%s], [%s], [%04d], io_mode is %x \r\n", __FILE__, __func__, __LINE__, io_mode);
 
 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
 
@@ -538,31 +550,26 @@ static int flash_chip_init(const struct device *dev)
 	flash_mspi_command_set(dev, &commands_single.id);
 	dev_data->packet.data_buf  = id;
 	dev_data->packet.num_bytes = sizeof(id);
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
 			     &dev_data->xfer);
 	if (rc < 0) {
-		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
 		LOG_ERR("Failed to read JEDEC ID in initial line mode: %d", rc);
 		return rc;
 	}
 
-	// rc = default_io_mode(dev);
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+	// If turn into Octa DDR mode at this point, then Flash use Octa command set.
+	rc = default_io_mode(dev);
 
 	if (rc < 0) {
 		LOG_ERR("Failed to switch to default io mode: %d", rc);
 		return rc;
 	}
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	/* Reading JEDEC ID for mode that forces single lane would be redundant,
 	 * since it switches back to single lane mode. Use ID from previous read.
 	 */
 	if (!dev_config->jedec_cmds->id.force_single) {
-		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 		rc = read_jedec_id(dev, id);
 		if (rc < 0) {
@@ -570,13 +577,8 @@ printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 			return rc;
 		}
 	}
-printf ("***[%s], [%s], [%04d],dev_config->jedec_id is %x \r\n", __FILE__, __func__, __LINE__, dev_config->jedec_id[0]);
-
-		printf ("***[%s], [%s], [%04d], id is %x \r\n", __FILE__, __func__, __LINE__, id[0]);
 
 	if (memcmp(id, dev_config->jedec_id, sizeof(id)) != 0) {
-		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
 		LOG_ERR("JEDEC ID mismatch, read: %02x %02x %02x, "
 			"expected: %02x %02x %02x",
 			id[0], id[1], id[2],
@@ -585,7 +587,6 @@ printf ("***[%s], [%s], [%04d],dev_config->jedec_id is %x \r\n", __FILE__, __fun
 			dev_config->jedec_id[2]);
 		return -ENODEV;
 	}
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 #if defined(CONFIG_MSPI_XIP)
 	/* Enable XIP access for this chip if specified so in DT. */
@@ -597,7 +598,6 @@ printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 		}
 	}
 #endif
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	return 0;
 }
@@ -607,7 +607,7 @@ static int drv_init(const struct device *dev)
 	const struct flash_mspi_nor_config *dev_config = dev->config;
 	struct flash_mspi_nor_data *dev_data = dev->data;
 	int rc;
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
 	if (!device_is_ready(dev_config->bus)) {
 		LOG_ERR("Device %s is not ready", dev_config->bus->name);
 		return -ENODEV;
@@ -619,7 +619,7 @@ static int drv_init(const struct device *dev)
 	}
 
 	rc = flash_chip_init(dev);
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
 	/* Release the MSPI controller - it was acquired by the call to
 	 * mspi_dev_config() in flash_chip_init().
 	 */
@@ -650,7 +650,7 @@ static DEVICE_API(flash, drv_api) = {
 	.io_mode = MSPI_IO_MODE_SINGLE,					\
 	.data_rate = MSPI_DATA_RATE_SINGLE,				\
 	.cpp = MSPI_CPP_MODE_0,						\
-	.endian = MSPI_XFER_LITTLE_ENDIAN,					\
+	.endian = MSPI_XFER_BIG_ENDIAN,					\
 	.ce_polarity = MSPI_CE_ACTIVE_LOW,				\
 	.dqs_enable = false,						\
 }

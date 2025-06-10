@@ -20,6 +20,12 @@ extern "C" {
 #define WITH_RESET_GPIO 1
 #endif
 
+const struct mspi_dev_cfg mspi_nor_cfg_1 = {
+	.io_mode = MSPI_IO_MODE_OCTAL,
+	.data_rate = MSPI_DATA_RATE_DUAL,
+	.dqs_enable = true,
+};
+
 struct flash_mspi_nor_config {
 	const struct device *bus;
 	uint32_t flash_size;
@@ -71,6 +77,7 @@ struct flash_mspi_nor_cmds {
 	struct flash_mspi_nor_cmd sector_erase;
 	struct flash_mspi_nor_cmd chip_erase;
 	struct flash_mspi_nor_cmd sfdp;
+	struct flash_mspi_nor_cmd wrcr2;
 };
 
 const struct flash_mspi_nor_cmds commands_single = {
@@ -124,6 +131,12 @@ const struct flash_mspi_nor_cmds commands_single = {
 		.cmd_length = 1,
 		.addr_length = 3,
 		.rx_dummy = 8,
+	},
+	.wrcr2 = {
+		.dir  = MSPI_TX,
+		.cmd = 0x72,
+		.cmd_length = 1,
+		.addr_length = 4,
 	},
 };
 

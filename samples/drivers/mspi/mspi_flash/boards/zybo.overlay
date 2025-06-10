@@ -16,12 +16,13 @@
 		t-enter-dpd = <10000>;
 		t-exit-dpd = <30000>;
 		mspi-max-frequency = <50000000>;
-		mspi-io-mode = "MSPI_IO_MODE_SINGLE";
-		mspi-data-rate = "MSPI_DATA_RATE_SINGLE";
+		mspi-io-mode = "MSPI_IO_MODE_OCTAL";
+		mspi-data-rate = "MSPI_DATA_RATE_DUAL";
 		mspi-hardware-ce-num = <1>;
 		mspi-cpp-mode = "MSPI_CPP_MODE_0";
-		mspi-endian = "MSPI_LITTLE_ENDIAN";
+		mspi-endian = "MSPI_BIG_ENDIAN";
 		mspi-ce-polarity = "MSPI_CE_ACTIVE_LOW";
+		mspi-dqs-enable;
 		status = "okay";
 		zephyr,deferred-init;
 	};
