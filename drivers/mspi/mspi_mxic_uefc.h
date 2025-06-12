@@ -501,6 +501,10 @@ enum HC_XFER_MODE_TYPE {
 #define SIO_IDLY_1_SIO2(x)		(((x) & 0xff) << 16)
 #define SIO_IDLY_1_SIO1(x)		(((x) & 0xff) << 8)
 #define SIO_IDLY_1_SIO0(x)		(((x) & 0xff) << 0)
+#define SIO_IDLY_1_0123(x)		SIO_IDLY_1_SIO0(x) | \
+								SIO_IDLY_1_SIO1(x) | \
+								SIO_IDLY_1_SIO2(x) | \
+								SIO_IDLY_1_SIO3(x)
 
 /* SIO Input Delay 2 Register */
 #define SIO_IDLY_2 0xF4
@@ -509,6 +513,10 @@ enum HC_XFER_MODE_TYPE {
 #define SIO_IDLY_2_SIO6(x)		(((x) & 0xff) << 8)
 #define SIO_IDLY_2_SIO7(x)		(((x) & 0xff) << 0)
 #define IDLY_CODE_VAL(x, v)		((v) << (((x) % 4) * 8))
+#define SIO_IDLY_2_4567(x)		SIO_IDLY_2_SIO4(x) | \
+								SIO_IDLY_2_SIO5(x) | \
+								SIO_IDLY_2_SIO6(x) | \
+								SIO_IDLY_2_SIO7(x)
 
 /* SIO Output Delay 1 Register */
 #define SIO_ODLY_1			0xF8

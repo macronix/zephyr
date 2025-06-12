@@ -94,6 +94,7 @@ static int mxic_uefc_init(const struct device *dev)
 	UPDATE_WRITE(HC_CTRL_SIO_SHIFTER(3), HC_CTRL_SIO_SHIFTER(3), reg_base + HC_CTRL);
 	printf("***[%s], [%s], [%04d],uefc_version is %x\r\n", __FILE__, __func__, __LINE__,
 	       uefc_version);
+
 	MXIC_WR32(CLK_CTRL_RX_SS_A(1) | CLK_CTRL_RX_SS_B(1), reg_base + CLK_CTRL);
 
 	MXIC_WR32(INT_STS_ALL_CLR, reg_base + INT_STS);
@@ -106,13 +107,14 @@ static int mxic_uefc_init(const struct device *dev)
 
 	MXIC_WR32(INT_STS_DMA | INT_STS_EN_DMA_TFR_CMPLT, reg_base + INT_STS_EN);
 
-	MXIC_WR32(SAMPLE_ADJ_DQS_IDLY_DOPI(0) | SAMPLE_ADJ_POINT_SEL_DDR(0) |
-			  SAMPLE_ADJ_POINT_SEL_SDR(1),
-		  reg_base + SAMPLE_ADJ);
-	MXIC_WR32(0, reg_base + SIO_IDLY_1);
-	MXIC_WR32(0, reg_base + SIO_IDLY_2);
-	MXIC_WR32(0, reg_base + SIO_ODLY_1);
-	MXIC_WR32(0, reg_base + SIO_ODLY_2);
+	MXIC_WR32(SAMPLE_ADJ_DQS_IDLY_DOPI(0xE8) | SAMPLE_ADJ_POINT_SEL_DDR(0) |
+			  SAMPLE_ADJ_POINT_SEL_SDR(2), reg_base + SAMPLE_ADJ);
+
+	uefc_version = MXIC_RD32(reg_base + SAMPLE_ADJ);
+	printf("***[%s], [%s], [%04d],uefc_version is %x\r\n", __FILE__, __func__, __LINE__,
+	       uefc_version);
+	MXIC_WR32(SIO_IDLY_1_0123(0), reg_base + SIO_IDLY_1);
+	MXIC_WR32(SIO_IDLY_2_4567(0), reg_base + SIO_IDLY_2);
 
 	//  k_sem_init(&data->sync_sem, 0, 1);
 
@@ -210,19 +212,16 @@ static int mxic_uefc_io_mode_xfer(const struct device *dev, void *tx, void *rx, 
 			tmp = nbytes;
 			nbytes++;
 		}
-
 		ret = mxic_uefc_poll_hc_reg(dev, PRES_STS, PRES_STS_TX_NFULL);
 		if (EXIT_SUCCESS != ret) {
 			return ret;
 		}
-
 		mxic_wr32(data, (reg_base + TXD(nbytes % 4)));
 
 		ret = mxic_uefc_poll_hc_reg(dev, PRES_STS, PRES_STS_RX_NEMPT);
 		if (EXIT_SUCCESS != ret) {
 			return ret;
 		}
-
 		data = MXIC_RD32(reg_base + RXD_REG);
 		if (rx) {
 			memcpy(rx + ofs, &data, tmp ? tmp : nbytes);
@@ -236,11 +235,6 @@ static int mxic_uefc_io_mode_xfer(const struct device *dev, void *tx, void *rx, 
 
 static uint32_t mspi_mxic_set_line(struct mspi_mxic_data *data, enum mspi_io_mode io_mode, enum mspi_data_rate data_rate)
 {
-	if (data_rate != MSPI_DATA_RATE_SINGLE) {
-		// LOG_INST_ERR(cfg->log, "%u, incorrect data rate, only SDR is supported.",
-		// __LINE__);
-		return -EINVAL;
-	}
 
 	uint32_t cmd_bus = 0;
 	uint32_t addr_bus = 0;
@@ -274,26 +268,8 @@ static uint32_t mspi_mxic_set_line(struct mspi_mxic_data *data, enum mspi_io_mod
 	switch (io_mode) {
 	case MSPI_IO_MODE_SINGLE:
 		break;
-	case MSPI_IO_MODE_DUAL:
-	case MSPI_IO_MODE_DUAL_1_1_2:
-		data_lines = 2;
-		break;
-	case MSPI_IO_MODE_DUAL_1_2_2:
-		addr_lines = data_lines = 2;
-		break;
-	case MSPI_IO_MODE_QUAD:
-	case MSPI_IO_MODE_QUAD_1_4_4:
-		addr_lines = data_lines = 4;
-		break;
-	case MSPI_IO_MODE_QUAD_1_1_4:
-		data_lines = 4;
-		break;
 	case MSPI_IO_MODE_OCTAL:
-	case MSPI_IO_MODE_OCTAL_1_8_8:
-		addr_lines = data_lines = 8;
-		break;
-	case MSPI_IO_MODE_OCTAL_1_1_8:
-		data_lines = 8;
+		cmd_lines = addr_lines = data_lines = 8;
 		break;
 	default:
 		break;
@@ -304,14 +280,23 @@ static uint32_t mspi_mxic_set_line(struct mspi_mxic_data *data, enum mspi_io_mod
 	data_bus = data_lines == 1 ? 0 : data_lines == 2 ? 1 : data_lines == 4 ? 2 : 3;
 
 	uint32_t conf = OP_CMD_BUSW(cmd_bus) | OP_CMD_DTR(cmd_ddr ? 1 : 0);
+	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
+	printf ("***[%s], [%s], [%04d], cmd_bus is %x\r\n", __FILE__, __func__, __LINE__, cmd_bus);
 
 	conf |= OP_ADDR_BUSW(addr_bus) |
 		OP_ADDR_DTR(addr_ddr ? 1 : 0);
+	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
+	printf ("***[%s], [%s], [%04d], addr_bus is %x\r\n", __FILE__, __func__, __LINE__, addr_bus);
 
 	conf |= OP_DATA_BUSW(data_bus) | OP_DATA_DTR(data_ddr ? 1 : 0);
+	printf ("***[%s], [%s], [%04d], data_bus is %x\r\n", __FILE__, __func__, __LINE__, data_bus);
 
 	data->data_buswidth = data_lines;
 	data->data_dtr = data_ddr;
+
+	printf ("***[%s], [%s], [%04d], data_lines is %x\r\n", __FILE__, __func__, __LINE__, data_lines);
+	printf ("***[%s], [%s], [%04d], data_ddr is %x\r\n", __FILE__, __func__, __LINE__, data_ddr);
+	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
 
 	return conf;
 }
@@ -439,6 +424,7 @@ printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 	if (param_mask & MSPI_DEVICE_CONFIG_DQS) {
 		if (cfg->dqs_enable) {
 			UPDATE_WRITE(DEV_CTRL_DQS_EN, cfg->dqs_enable ? DEV_CTRL_DQS_EN : 0, reg_base + DEV_CTRL);
+			UPDATE_WRITE(HC_CTRL_DATA_ORDER, cfg->dqs_enable ? HC_CTRL_DATA_ORDER : 0, reg_base + HC_CTRL);
 		}
 	}
 printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
@@ -563,22 +549,32 @@ static int mspi_pio_prepare(const struct device *dev, struct mspi_xfer *xfer)
 
 	int ret = 0;
 	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
+	printf ("***[%s], [%s], [%04d],  xfer->rx_dummy is %x\r\n", __FILE__, __func__, __LINE__,  xfer->rx_dummy);
 
 	uint32_t conf = MXIC_RD32(reg_base + TFR_MODE);
+	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
 
 	uint32_t conf_1 = 0;
 
 	uint16_t dummy_len = DIR_IN == xfer->packets->dir ? xfer->rx_dummy : xfer->tx_dummy;
+	printf ("***[%s], [%s], [%04d], dummy_len is %x\r\n", __FILE__, __func__, __LINE__, dummy_len);
 
 	conf &= ~(TFR_MODE_ADDR_CNT_MASK | TFR_MODE_CMD_CNT | TFR_MODE_DMY_MASK | OP_DD_RD);
+	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
 
 	conf |= OP_CMD_CNT(xfer->cmd_length) | OP_ADDR_CNT(xfer->addr_length);
+	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
 
 	conf_1 = OP_DMY_CNT(dummy_len, data->data_dtr, data->data_buswidth);
+	printf ("***[%s], [%s], [%04d], conf_1 is %x\r\n", __FILE__, __func__, __LINE__, conf_1);
+	printf ("***[%s], [%s], [%04d], data->data_dtr is %x\r\n", __FILE__, __func__, __LINE__, data->data_dtr);
+	printf ("***[%s], [%s], [%04d], data->data_buswidth is %x\r\n", __FILE__, __func__, __LINE__, data->data_buswidth);
 
 	conf |= OP_DMY_CNT(dummy_len, data->data_dtr, data->data_buswidth);
+	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
 
 	conf |= (DIR_IN == xfer->packets->dir ? OP_DD_RD : 0);
+	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
 
 	MXIC_WR32(conf, reg_base + TFR_MODE);
 
@@ -613,9 +609,10 @@ static int mspi_pio_transceive(const struct device *dev, const struct mspi_xfer 
 	/* Set up command  */
 	if (xfer->cmd_length) {
 		uint32_t cmd = swap32(xfer->packets->cmd,  xfer->cmd_length);
+				printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
 		ret = mxic_uefc_io_mode_xfer(dev, (uint8_t *)&cmd, 0,
 					     xfer->cmd_length, 0);
-		printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 		if (EXIT_SUCCESS != ret) {
 			mxic_uefc_err_dessert_cs(dev);
@@ -626,25 +623,31 @@ static int mspi_pio_transceive(const struct device *dev, const struct mspi_xfer 
 	/* Set up address */
 	if (xfer->addr_length) {
 		uint32_t addr = swap32(xfer->packets->address,  xfer->addr_length);
+		printf("***[%s], [%s], [%04d], xfer->addr_length is %x\r\n", __FILE__, __func__, __LINE__, xfer->addr_length);
 
 		ret = mxic_uefc_io_mode_xfer(dev, (uint8_t *)&addr, 0,
 					     xfer->addr_length, 0);
 
-		printf("***[%s], [%s], [%04d], xfer->addr_length is %x\r\n", __FILE__, __func__, __LINE__, xfer->addr_length);
 
 		if (EXIT_SUCCESS != ret) {
 			mxic_uefc_err_dessert_cs(dev);
 		}
 	}
-	printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+		printf("***[%s], [%s], [%04d], xfer->rx_dummy is %x\r\n", __FILE__, __func__, __LINE__, xfer->rx_dummy);
+		printf("***[%s], [%s], [%04d], xfer->tx_dummy is %x\r\n", __FILE__, __func__, __LINE__, xfer->tx_dummy);
 
-	uint32_t dummy_length = MSPI_TX == xfer->packets->dir ? xfer->tx_dummy : xfer->rx_dummy;
+	uint32_t dummy_length = (MSPI_TX == xfer->packets->dir) ? xfer->tx_dummy : xfer->rx_dummy;
 
 	/* Setup dummy: dummy's bus width and DTR are determined by the data */
 	if (dummy_length) {
 		uint32_t dummy_len =
 			(dummy_length * (data->data_dtr + 1)) / (8 / (data->data_buswidth));
-		printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+					printf("***[%s], [%s], [%04d], dummy_length is %x\r\n", __FILE__, __func__, __LINE__, dummy_length);
+		printf("***[%s], [%s], [%04d], data->data_buswidth is %x\r\n", __FILE__, __func__, __LINE__, data->data_buswidth);
+
+		printf("***[%s], [%s], [%04d], data->data_buswidth is %x\r\n", __FILE__, __func__, __LINE__, data->data_buswidth);
+
+		printf("***[%s], [%s], [%04d], dummy_len is %x\r\n", __FILE__, __func__, __LINE__, dummy_len);
 
 		ret = mxic_uefc_io_mode_xfer(dev, 0, 0, dummy_len, 0);
 		if (EXIT_SUCCESS != ret) {

@@ -46,11 +46,6 @@ static int dev_cfg_apply(const struct device *dev, const struct mspi_dev_cfg *cf
 	struct flash_mspi_nor_data *dev_data = dev->data;
 printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-	if (dev_data->curr_cfg == cfg) {
-		return 0;
-	}
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
 	int rc = mspi_dev_config(dev_config->bus, &dev_config->mspi_id,
 				 MSPI_DEVICE_CONFIG_ALL, cfg);
 printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
@@ -155,6 +150,7 @@ static int api_read(const struct device *dev, off_t addr, void *dest,
 	dev_data->packet.num_bytes = size;
 	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
 			     &dev_data->xfer);
+	printf ("***[%s], [%s], [%04d], dev_data->xfer rx_dummya is 0x%x\r\n", __FILE__, __func__, __LINE__,  dev_data->xfer.rx_dummy);
 
 	release(dev);
 
@@ -525,7 +521,7 @@ static int default_io_mode(const struct device *dev)
 
 	dev_data->packet.data_buf  = &read_id;
 	dev_data->packet.address  = addr_1;
-	dev_data->packet.num_bytes = 3;
+	dev_data->packet.num_bytes = 2;
 	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
 			     &dev_data->xfer);
 
@@ -569,24 +565,24 @@ static int flash_chip_init(const struct device *dev)
 	/* Reading JEDEC ID for mode that forces single lane would be redundant,
 	 * since it switches back to single lane mode. Use ID from previous read.
 	 */
-	if (!dev_config->jedec_cmds->id.force_single) {
+	// if (!dev_config->jedec_cmds->id.force_single) {
 
-		rc = read_jedec_id(dev, id);
-		if (rc < 0) {
-			LOG_ERR("Failed to read JEDEC ID in final line mode: %d", rc);
-			return rc;
-		}
-	}
+	// 	rc = read_jedec_id(dev, id);
+	// 	if (rc < 0) {
+	// 		LOG_ERR("Failed to read JEDEC ID in final line mode: %d", rc);
+	// 		return rc;
+	// 	}
+	// }
 
-	if (memcmp(id, dev_config->jedec_id, sizeof(id)) != 0) {
-		LOG_ERR("JEDEC ID mismatch, read: %02x %02x %02x, "
-			"expected: %02x %02x %02x",
-			id[0], id[1], id[2],
-			dev_config->jedec_id[0],
-			dev_config->jedec_id[1],
-			dev_config->jedec_id[2]);
-		return -ENODEV;
-	}
+	// if (memcmp(id, dev_config->jedec_id, sizeof(id)) != 0) {
+	// 	LOG_ERR("JEDEC ID mismatch, read: %02x %02x %02x, "
+	// 		"expected: %02x %02x %02x",
+	// 		id[0], id[1], id[2],
+	// 		dev_config->jedec_id[0],
+	// 		dev_config->jedec_id[1],
+	// 		dev_config->jedec_id[2]);
+	// 	return -ENODEV;
+	// }
 
 #if defined(CONFIG_MSPI_XIP)
 	/* Enable XIP access for this chip if specified so in DT. */

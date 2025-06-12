@@ -8,10 +8,10 @@
 	status = "okay";
 	clock-frequency = <50000000>;
 	zephyr,deferred-init;
-	mx25r6435f: mx25r6435f@0 {
+	mx25uw51245g: mx25uw51245g@0 {
 		compatible = "jedec,mspi-nor";
 		reg = <0>;
-		jedec-id = [c2 80 3C];
+		jedec-id = [c2 81 3A];
 		size = <67108864>;
 		t-enter-dpd = <10000>;
 		t-exit-dpd = <30000>;

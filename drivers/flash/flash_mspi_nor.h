@@ -214,7 +214,7 @@ const struct flash_mspi_nor_cmds commands_octal = {
 	},
 	.read = {
 		.dir = MSPI_RX,
-		.cmd = SPI_NOR_OCMD_RD,
+		.cmd = SPI_NOR_OCMD_DTR_RD,
 		.cmd_length = 2,
 		.addr_length = 4,
 		.rx_dummy = 20,

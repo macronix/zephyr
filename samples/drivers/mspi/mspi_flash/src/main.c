@@ -17,9 +17,11 @@
 #define XLNX_MSPI_COMPAT invalid
 #endif
 
-#define SPI_FLASH_TEST_REGION_OFFSET 0xff000
+#define SPI_FLASH_TEST_REGION_OFFSET 0
 
-#define SPI_FLASH_SECTOR_SIZE        4096
+#define SPI_FLASH_SECTOR_SIZE        32
+
+#define FLASH_ERASE_SECTOR_SIZE        4096
 
 #define SPI_FLASH_MULTI_SECTOR_TEST
 
@@ -55,7 +57,7 @@ int single_sector_test(const struct device *flash_dev)
 	 * SPI_FLASH_SECTOR_SIZE = flash size
 	 */
 	rc = flash_erase(flash_dev, SPI_FLASH_TEST_REGION_OFFSET,
-			 SPI_FLASH_SECTOR_SIZE);
+			 FLASH_ERASE_SECTOR_SIZE);
 	if (rc != 0) {
 		printf("Flash erase failed! %d\n", rc);
 	} else {
@@ -129,7 +131,7 @@ int multi_sector_test(const struct device *flash_dev)
 	 * SPI_FLASH_SECTOR_SIZE = flash size
 	 * Erase 2 sectors for check for erase of consequtive sectors
 	 */
-	rc = flash_erase(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, SPI_FLASH_SECTOR_SIZE * 2);
+	rc = flash_erase(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, FLASH_ERASE_SECTOR_SIZE * 2);
 	if (rc != 0) {
 		printf("Flash erase failed! %d\n", rc);
 	} else {
