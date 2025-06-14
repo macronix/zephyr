@@ -101,6 +101,7 @@ static inline void device_map(mm_reg_t *virt_addr, uintptr_t phys_addr,
 	/* Pass along flags and add that we want supervisor mode
 	 * read-write access.
 	 */
+printf ("***[%s], [%s], [%04d], phys_addr is %x\r\n", __FILE__, __func__, __LINE__, phys_addr);
 
 	k_mem_map_phys_bare((uint8_t **)virt_addr, phys_addr, size,
 			    flags | K_MEM_PERM_RW);

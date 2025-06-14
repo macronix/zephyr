@@ -21,5 +21,5 @@ properties:
     const: 1
   "#size-cells":
     required: true
-    const: 0
+    const: 1
 

@@ -53,6 +53,7 @@
 		reg = <0x00000000 DT_SIZE_M(512)>;
 	};
 
+
 	leds {
 		compatible = "gpio-leds";
 		ld_mio: led_mio {

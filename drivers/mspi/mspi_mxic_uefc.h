@@ -431,8 +431,7 @@ enum HC_XFER_MODE_TYPE {
 #define MAP_WR_CTRL			0xC8
 
 /* Mapping Command Register */
-#define MAP_CMD_RD			0xCC    
-#define MAP_CMD_WR			0xCE
+#define MAP_CMD			0xCC    
 
 /* Top Mapping Address Register */
 #define TOP_MAP_ADDR			0xD0
@@ -489,8 +488,8 @@ enum HC_XFER_MODE_TYPE {
 
 /* Sample Point Adjust Register */
 #define SAMPLE_ADJ 			0xEC
-#define SAMPLE_ADJ_DQS_IDLY_DOPI(x)	(((x) & 0xff) << 24)
-#define SAMPLE_ADJ_DQS_IDLY_SOPI(x)	(((x) & 0xff) << 16)
+#define SAMPLE_ADJ_DQS_IDLY_DOPI(x)	(((x) & 0xff) << 27)
+#define SAMPLE_ADJ_DQS_IDLY_SOPI(x)	(((x) & 0xff) << 19)
 #define SAMPLE_ADJ_DQS_ODLY(x)		(((x) & 0xff) << 8)
 #define SAMPLE_ADJ_POINT_SEL_DDR(x)	(((x) & 0x7) << 3)
 #define SAMPLE_ADJ_POINT_SEL_SDR(x)	(((x) & 0x7) << 0)

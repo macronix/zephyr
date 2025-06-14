@@ -10,10 +10,12 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/pm/device.h>
 #include <zephyr/pm/device_runtime.h>
+#include <zephyr/init.h>
 
 #include "flash_mspi_nor.h"
 #include "flash_mspi_nor_quirks.h"
-
+#define UEFC_BASE_MAP_ADDR 		0x60000000
+#define UEFC_MAP_SIZE			0x00800000
 LOG_MODULE_REGISTER(flash_mspi_nor, CONFIG_FLASH_LOG_LEVEL);
 
 void flash_mspi_command_set(const struct device *dev, const struct flash_mspi_nor_cmd *cmd)
@@ -507,23 +509,32 @@ static int default_io_mode(const struct device *dev)
 	const struct flash_mspi_nor_config *dev_config = dev->config;
 	struct flash_mspi_nor_data *dev_data = dev->data;
 	enum mspi_io_mode io_mode = dev_config->mspi_nor_cfg.io_mode;
+	uint8_t *buf = (uint8_t *)k_malloc(0x1000);
 	int rc = 0;
+	// rc = octal_enable_set(dev);
+	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
 
-	rc = octal_enable_set(dev);
+	dev_cfg_apply(dev, &mspi_dev_cfg_xip);
+	printf ("***[%s], [%s], [%04d], reg_base is %x\r\n", __FILE__, __func__, __LINE__, reg_base);
+
+	rc = mspi_xip_config(dev_config->bus, &dev_config->mspi_id,
+				&mspi_xip_cfg);
 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-	dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
+	// memcpy(buf, dev_data->flash_mmio, 32);
+	memcpy(buf, reg_base, 32);
+
 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	uint32_t read_id = 0;
 	uint32_t addr_1 = 0;
-	flash_mspi_command_set(dev, &commands_octal.id);
+	// flash_mspi_command_set(dev, &commands_octal.id);
 
-	dev_data->packet.data_buf  = &read_id;
-	dev_data->packet.address  = addr_1;
-	dev_data->packet.num_bytes = 2;
-	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
-			     &dev_data->xfer);
+	// dev_data->packet.data_buf  = &read_id;
+	// dev_data->packet.address  = addr_1;
+	// dev_data->packet.num_bytes = 2;
+	// rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+	// 		     &dev_data->xfer);
 
 	return 0;
 }
@@ -536,6 +547,10 @@ static int flash_chip_init(const struct device *dev)
 	uint8_t id[JESD216_READ_ID_LEN] = {0};
 	int rc;
 
+	DEVICE_MMIO_MAP(dev, K_MEM_CACHE_NONE);
+
+	// device_map(&dev_data->flash_mmio, UEFC_BASE_MAP_ADDR, UEFC_MAP_SIZE, K_MEM_CACHE_NONE);
+	// device_map(&dev_data->sram_mmio, 0xFFFC0000, 0x40000, K_MEM_CACHE_NONE);
 
 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
 
@@ -543,16 +558,16 @@ static int flash_chip_init(const struct device *dev)
 		return rc;
 	}
 
-	flash_mspi_command_set(dev, &commands_single.id);
-	dev_data->packet.data_buf  = id;
-	dev_data->packet.num_bytes = sizeof(id);
+	// flash_mspi_command_set(dev, &commands_single.id);
+	// dev_data->packet.data_buf  = id;
+	// dev_data->packet.num_bytes = sizeof(id);
 
-	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
-			     &dev_data->xfer);
-	if (rc < 0) {
-		LOG_ERR("Failed to read JEDEC ID in initial line mode: %d", rc);
-		return rc;
-	}
+	// rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+	// 		     &dev_data->xfer);
+	// if (rc < 0) {
+	// 	LOG_ERR("Failed to read JEDEC ID in initial line mode: %d", rc);
+	// 	return rc;
+	// }
 
 	// If turn into Octa DDR mode at this point, then Flash use Octa command set.
 	rc = default_io_mode(dev);
@@ -728,6 +743,7 @@ BUILD_ASSERT((FLASH_SIZE_INST(inst) % CONFIG_FLASH_MSPI_NOR_LAYOUT_PAGE_SIZE) ==
 	PM_DEVICE_DT_INST_DEFINE(inst, dev_pm_action_cb);			\
 	static struct flash_mspi_nor_data dev##inst##_data;			\
 	static const struct flash_mspi_nor_config dev##inst##_config = {	\
+		._mmio = Z_DEVICE_MMIO_ROM_INITIALIZER(DT_DRV_INST(inst)),\
 		.bus = DEVICE_DT_GET(DT_INST_BUS(inst)),			\
 		.flash_size = FLASH_SIZE_INST(inst),				\
 		.mspi_id = MSPI_DEVICE_ID_DT_INST(inst),			\

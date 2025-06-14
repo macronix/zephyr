@@ -79,8 +79,10 @@ static int mxic_uefc_init(const struct device *dev)
 
 	DEVICE_MMIO_MAP(dev, K_MEM_CACHE_NONE);
 
-	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
 
+	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
+	printf("***[%s], [%s], [%04d],reg_base is %x\r\n", __FILE__, __func__, __LINE__,
+	       reg_base);
 	uefc_version = MXIC_RD32(reg_base + INT_STS_SIG_EN);
 	MXIC_WR32(UEFC_BASE_MAP_ADDR, reg_base + BASE_MAP_ADDR);
 	MXIC_WR32(UEFC_TOP_MAP_ADDR, reg_base + TOP_MAP_ADDR);
@@ -107,7 +109,7 @@ static int mxic_uefc_init(const struct device *dev)
 
 	MXIC_WR32(INT_STS_DMA | INT_STS_EN_DMA_TFR_CMPLT, reg_base + INT_STS_EN);
 
-	MXIC_WR32(SAMPLE_ADJ_DQS_IDLY_DOPI(0xE8) | SAMPLE_ADJ_POINT_SEL_DDR(0) |
+	MXIC_WR32(SAMPLE_ADJ_DQS_IDLY_DOPI(29) | SAMPLE_ADJ_POINT_SEL_DDR(0) |
 			  SAMPLE_ADJ_POINT_SEL_SDR(2), reg_base + SAMPLE_ADJ);
 
 	uefc_version = MXIC_RD32(reg_base + SAMPLE_ADJ);
@@ -343,22 +345,23 @@ static int _api_dev_config(const struct device *dev,
 			   const enum mspi_dev_cfg_mask param_mask,
 			   const struct mspi_dev_cfg *cfg)
 {
-	struct mspi_mxic_data *data = dev->data;
+	struct mspi_mxic_data *dev_data = dev->data;
 	enum mspi_io_mode io_mode = cfg->io_mode;
 	enum mspi_data_rate data_rate = cfg->data_rate;
  	bool dqs_enable = cfg->dqs_enable;	
 	uint32_t freq = cfg->freq;
 	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
 	int ret = 0;
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if (param_mask & MSPI_DEVICE_CONFIG_ENDIAN) {
 		if (cfg->endian != MSPI_XFER_BIG_ENDIAN) {
 			LOG_ERR("Only big endian transfers are supported.");
 			return -ENOTSUP;
 		}
+
+		UPDATE_WRITE(HC_CTRL_DATA_ORDER, (MSPI_XFER_LITTLE_ENDIAN == cfg->endian) ?
+			HC_CTRL_DATA_ORDER : 0,	reg_base + HC_CTRL);
 	}
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if (param_mask & MSPI_DEVICE_CONFIG_CE_POL) {
 		if (cfg->ce_polarity != MSPI_CE_ACTIVE_LOW) {
@@ -366,7 +369,6 @@ printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 			return -ENOTSUP;
 		}
 	}
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if (param_mask & MSPI_DEVICE_CONFIG_MEM_BOUND) {
 		if (cfg->mem_boundary) {
@@ -374,7 +376,6 @@ printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 			return -ENOTSUP;
 		}
 	}
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if (param_mask & MSPI_DEVICE_CONFIG_BREAK_TIME) {
 		if (cfg->time_to_break) {
@@ -382,7 +383,6 @@ printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 			return -ENOTSUP;
 		}
 	}
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if (param_mask & MSPI_DEVICE_CONFIG_CPP) {
 		if (cfg->cpp) {
@@ -390,7 +390,6 @@ printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 			return -ENOTSUP;
 		}
 	}
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if (param_mask & MSPI_DEVICE_CONFIG_IO_MODE ||
 		(param_mask & MSPI_DEVICE_CONFIG_DATA_RATE)
@@ -398,7 +397,7 @@ printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 #if defined(CONFIG_MSPI_XIP)
 		dev_data->xip_params_stored.io_mode = cfg->io_mode;
 #endif
-		uint32_t conf = mspi_mxic_set_line(data, io_mode, data_rate);
+		uint32_t conf = mspi_mxic_set_line(dev_data, io_mode, data_rate);
 
 		MXIC_WR32(conf, reg_base + TFR_MODE);
 	}
@@ -423,11 +422,9 @@ printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if (param_mask & MSPI_DEVICE_CONFIG_DQS) {
 		if (cfg->dqs_enable) {
-			UPDATE_WRITE(DEV_CTRL_DQS_EN, cfg->dqs_enable ? DEV_CTRL_DQS_EN : 0, reg_base + DEV_CTRL);
-			UPDATE_WRITE(HC_CTRL_DATA_ORDER, cfg->dqs_enable ? HC_CTRL_DATA_ORDER : 0, reg_base + HC_CTRL);
+			UPDATE_WRITE(DEV_CTRL_DQS_EN, cfg->dqs_enable ? DEV_CTRL_DQS_EN : 0, reg_base + DEV_CTRL);			
 		}
 	}
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 #if defined(CONFIG_MSPI_XIP)
 	if (param_mask & MSPI_DEVICE_CONFIG_READ_CMD) {
@@ -460,6 +457,8 @@ static int _api_xip_config(const struct device *dev,
 {
 	struct mspi_mxic_data *dev_data = dev->data;
 	int rc;
+	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
+	uint8_t *buf = (uint8_t *)k_malloc(0x1000);
 
 	if (!cfg->enable) {
 		MXIC_WR32(TFR_CTRL_IO_START, reg_base + TFR_CTRL);
@@ -483,21 +482,30 @@ static int _api_xip_config(const struct device *dev,
 		enum mspi_data_rate data_rate = params->data_rate;
 		uint16_t rx_dummy = params->rx_dummy;
 		uint16_t tx_dummy = params->tx_dummy;
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-		uint32_t conf = mspi_mxic_set_line(data, io_mode, data_rate);
-		ctrl->read |= conf;
+		uint32_t conf = mspi_mxic_set_line(dev_data, io_mode, data_rate);
+			printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-		ctrl->read  |=  OP_DD_RD;
+		ctrl.read |= conf;
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-		ctrl->write |= conf;
-		ctrl->read  |= OP_DMY_CNT(rx_dummy, data->data_dtr, data->data_buswidth);
-		ctrl->write  |= OP_DMY_CNT(tx_dummy, data->data_dtr, data->data_buswidth);
+		ctrl.read  |=  OP_DD_RD | OP_ADDR_CNT(params->addr_length);
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-		MXIC_WR32(ctrl->read, reg_base + MAP_RD_CTRL);
-		MXIC_WR32(ctrl->write, reg_base + MAP_WR_CTRL);
+		ctrl.write |= conf;
+		ctrl.read  |= OP_DMY_CNT(rx_dummy, dev_data->data_dtr, dev_data->data_buswidth);
+		ctrl.write  |= OP_DMY_CNT(tx_dummy, dev_data->data_dtr, dev_data->data_buswidth);
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-		MXIC_WR32(read_cmd, reg_base + MAP_CMD_RD);
-		MXIC_WR32(write_cmd  << 16 , reg_base + MAP_CMD_WR);
+		MXIC_WR32(ctrl.read, reg_base + MAP_RD_CTRL);
+		MXIC_WR32(ctrl.write, reg_base + MAP_WR_CTRL);
+	printf ("***[%s], [%s], [%04d], ctrl.read  is %x\r\n", __FILE__, __func__, __LINE__, ctrl.read );
+
+		MXIC_WR32(read_cmd, reg_base + MAP_CMD);
+		// MXIC_WR32(write_cmd  << 16 , reg_base + MAP_CMD);
+			printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
 	} else if (dev_data->xip_params_active.read_cmd !=
 		   dev_data->xip_params_stored.read_cmd ||
 		   dev_data->xip_params_active.write_cmd !=
@@ -513,7 +521,8 @@ static int _api_xip_config(const struct device *dev,
 		LOG_ERR("Conflict with configuration already used for XIP.");
 		return -EINVAL;
 	}
-
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+	// memcpy(buf, reg_base + 0x1c600000, 32);
 	dev_data->xip_enabled |= BIT(dev_id->dev_idx);
 
 	return 0;
@@ -579,18 +588,6 @@ static int mspi_pio_prepare(const struct device *dev, struct mspi_xfer *xfer)
 	MXIC_WR32(conf, reg_base + TFR_MODE);
 
 	return ret;
-}
-
-static int api_xip_config(const struct device *dev,
-			  const struct mspi_dev_id *dev_id,
-			  const struct mspi_xip_cfg *cfg)
-{
-	struct mspi_mxic_data *dev_data = dev->data;
-
-	/* End IO Mode */
-	// MXIC_WR32(TFR_CTRL_IO_END, reg_base + TFR_CTRL);
-
-	return 0;
 }
 
 static int mspi_pio_transceive(const struct device *dev, const struct mspi_xfer *xfer,
@@ -730,7 +727,7 @@ static struct mspi_driver_api mspi_mxic_driver_api = {
 	.get_channel_status = api_get_channel_status,
 	.transceive = mspi_mxic_transceive,
 #if defined(CONFIG_MSPI_XIP)
-	.xip_config         = api_xip_config,
+	.xip_config = api_xip_config,
 #endif
 };
 

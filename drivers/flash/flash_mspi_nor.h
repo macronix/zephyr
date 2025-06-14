@@ -20,13 +20,31 @@ extern "C" {
 #define WITH_RESET_GPIO 1
 #endif
 
-const struct mspi_dev_cfg mspi_nor_cfg_1 = {
-	.io_mode = MSPI_IO_MODE_OCTAL,
-	.data_rate = MSPI_DATA_RATE_DUAL,
-	.dqs_enable = true,
+const struct mspi_dev_cfg mspi_dev_cfg_xip = {
+	.ce_num = 0,
+	.freq = 25000000,
+	.io_mode = MSPI_IO_MODE_SINGLE,
+	.data_rate = MSPI_DATA_RATE_SINGLE,
+	.cpp = MSPI_CPP_MODE_0,
+	.endian = MSPI_XFER_BIG_ENDIAN,
+	.ce_polarity = MSPI_CE_ACTIVE_LOW,
+	.dqs_enable = false,
+	.rx_dummy = 0,
+	.tx_dummy = 0,
+	.read_cmd = 0x03,
+	.write_cmd = 0x02,
+	.cmd_length = 1,
+	.addr_length = 3,
+	.mem_boundary = 0,
+	.time_to_break = 0,
 };
 
+ struct mspi_xip_cfg mspi_xip_cfg = {
+	.enable = true,
+ };
+
 struct flash_mspi_nor_config {
+	DEVICE_MMIO_ROM;
 	const struct device *bus;
 	uint32_t flash_size;
 	struct mspi_dev_id mspi_id;
@@ -51,10 +69,13 @@ struct flash_mspi_nor_config {
 };
 
 struct flash_mspi_nor_data {
+	DEVICE_MMIO_RAM;
 	struct k_sem acquired;
 	struct mspi_xfer_packet packet;
 	struct mspi_xfer xfer;
 	struct mspi_dev_cfg *curr_cfg;
+	mm_reg_t flash_mmio;
+	mm_reg_t sram_mmio;
 };
 
 struct flash_mspi_nor_cmd {

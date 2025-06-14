@@ -251,9 +251,9 @@ int main(void)
 // 	printf("\n%s SPI flash testing\n", flash_dev->name);
 	printf("==========================\n");
 
-	if (single_sector_test(flash_dev)) {
-		return 1;
-	}
+	// if (single_sector_test(flash_dev)) {
+	// 	return 1;
+	// }
 // #if defined SPI_FLASH_MULTI_SECTOR_TEST
 // 	if (multi_sector_test(flash_dev)) {
 // 		return 1;

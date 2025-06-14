@@ -10,20 +10,40 @@
 	zephyr,deferred-init;
 	mx25uw51245g: mx25uw51245g@0 {
 		compatible = "jedec,mspi-nor";
-		reg = <0>;
+		reg = <0x60000000 0x1000>;
+		// reg = <0>;
 		jedec-id = [c2 81 3A];
 		size = <67108864>;
 		t-enter-dpd = <10000>;
 		t-exit-dpd = <30000>;
 		mspi-max-frequency = <50000000>;
-		mspi-io-mode = "MSPI_IO_MODE_OCTAL";
-		mspi-data-rate = "MSPI_DATA_RATE_DUAL";
+		mspi-io-mode = "MSPI_IO_MODE_SINGLE";
+		mspi-data-rate = "MSPI_DATA_RATE_SINGLE";
 		mspi-hardware-ce-num = <1>;
 		mspi-cpp-mode = "MSPI_CPP_MODE_0";
 		mspi-endian = "MSPI_BIG_ENDIAN";
 		mspi-ce-polarity = "MSPI_CE_ACTIVE_LOW";
-		mspi-dqs-enable;
 		status = "okay";
 		zephyr,deferred-init;
 	};
 };
+
+// mx25uw51245g: mx25uw51245g@0 {
+// 	compatible = "jedec,mspi-nor";
+// 	reg = <0>;
+// 	jedec-id = [c2 81 3A];
+// 	size = <67108864>;
+// 	t-enter-dpd = <10000>;
+// 	t-exit-dpd = <30000>;
+// 	mspi-max-frequency = <50000000>;
+// 	mspi-io-mode = "MSPI_IO_MODE_OCTAL";
+// 	mspi-data-rate = "MSPI_DATA_RATE_DUAL";
+// 	mspi-hardware-ce-num = <1>;
+// 	mspi-cpp-mode = "MSPI_CPP_MODE_0";
+// 	mspi-endian = "MSPI_BIG_ENDIAN";
+// 	mspi-ce-polarity = "MSPI_CE_ACTIVE_LOW";
+// 	mspi-dqs-enable;
+// 	xip-config = <1 0 0x200000 0>;
+// 	status = "okay";
+// 	zephyr,deferred-init;
+// };
