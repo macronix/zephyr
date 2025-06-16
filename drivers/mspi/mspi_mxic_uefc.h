@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Ambiq Micro Inc. <www.ambiq.com>
+ * Copyright (c) 2025-2026 Macronix International Co., Ltd.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -542,6 +542,32 @@ enum HC_XFER_MODE_TYPE {
 #define UEFC_BASE_EXT_DDR_ADDR	0x00000000
 #define DIR_IN  0
 #define DIR_OUT 1
+
+#define BASE_ADDR(dev) (mm_reg_t)DEVICE_MMIO_GET(dev)
+
+static uint32_t reg_read(const struct device *dev, uint32_t off)
+{
+	return sys_read32(BASE_ADDR(dev) + off);
+}
+static void reg_write(uint32_t data, const struct device *dev, uint32_t off)
+{
+	sys_write32(data, BASE_ADDR(dev) + off);
+}
+static void reg_update(const struct device *dev, uint32_t _mask, uint32_t data,  uint32_t off)
+{
+	sys_write32(((data) | (sys_read32(BASE_ADDR(dev) + off) & ~(_mask))), (BASE_ADDR(dev) + off));
+}
+
+#define DEFINE_MM_REG_RD(reg, off) \
+	static inline uint32_t read_##reg(const struct device *dev) \
+	{ return reg_read(dev, off); }
+#define DEFINE_MM_REG_WR(reg, off) \
+	static inline void write_##reg(const struct device *dev, uint32_t data) \
+	{ reg_write(data, dev, off); }
+#define DEFINE_MM_REG_UPDATE(reg, off) \
+	static inline void update_##reg(const struct device *dev, uint32_t _mask, uint32_t data) \
+	{ reg_update(dev, _mask, data, off);}
+
 /* Default selection: Channel A, lun 0, Port 0 */
 #define UEFC_CH_LUN_PORT 		HC_CTRL_CH_LUN_PORT(A, 0, 0)
 

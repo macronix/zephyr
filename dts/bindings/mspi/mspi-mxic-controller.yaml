@@ -1,11 +1,11 @@
-# Copyright (c) 2018, I-SENSE group of ICCS
-# SPDX-License-Identifier: Apache-2.0
+#Copyright (c) 2025-2026 Macronix International Co., Ltd.
+#SPDX-License-Identifier: Apache-2.0
 
 description: xlnx uefc MSPI controller
 
 bus: mspi
 
-compatible: "xlnx,mspi-controller"
+compatible: "mspi-mxic-controller"
 
 include: [mspi-controller.yaml, pinctrl-device.yaml]
 
@@ -22,4 +22,3 @@ properties:
   "#size-cells":
     required: true
     const: 1
-

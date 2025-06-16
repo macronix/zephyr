@@ -11,8 +11,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#if DT_HAS_COMPAT_STATUS_OKAY(xlnx_mspi_controller)
-#define XLNX_MSPI_COMPAT xlnx_mspi_controller
+#if DT_HAS_COMPAT_STATUS_OKAY(mspi_mxic_controller)
+#define XLNX_MSPI_COMPAT mspi_mxic_controller
 #else
 #define XLNX_MSPI_COMPAT invalid
 #endif
@@ -251,9 +251,9 @@ int main(void)
 // 	printf("\n%s SPI flash testing\n", flash_dev->name);
 	printf("==========================\n");
 
-	// if (single_sector_test(flash_dev)) {
-	// 	return 1;
-	// }
+	if (single_sector_test(flash_dev)) {
+		return 1;
+	}
 // #if defined SPI_FLASH_MULTI_SECTOR_TEST
 // 	if (multi_sector_test(flash_dev)) {
 // 		return 1;

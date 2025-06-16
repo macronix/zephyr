@@ -514,15 +514,15 @@ static int default_io_mode(const struct device *dev)
 	// rc = octal_enable_set(dev);
 	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
 
-	dev_cfg_apply(dev, &mspi_dev_cfg_xip);
+	dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
 	printf ("***[%s], [%s], [%04d], reg_base is %x\r\n", __FILE__, __func__, __LINE__, reg_base);
 
-	rc = mspi_xip_config(dev_config->bus, &dev_config->mspi_id,
-				&mspi_xip_cfg);
+	// rc = mspi_xip_config(dev_config->bus, &dev_config->mspi_id,
+	// 			&mspi_xip_cfg);
 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	// memcpy(buf, dev_data->flash_mmio, 32);
-	memcpy(buf, reg_base, 32);
+	// memcpy(buf, reg_base, 32);
 
 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 

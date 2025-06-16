@@ -113,7 +113,7 @@
 			#size-cells = <1>;
 			status = "okay";
 			reg = <0x43a00000 0x2000 0x60000000 0x2000>;
-			compatible = "xlnx,mspi-controller";
+			compatible = "mspi-mxic-controller";
 		};
 
 		uart0: uart@e0000000 {
