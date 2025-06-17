@@ -309,6 +309,7 @@ static int uart_xlnx_ps_init(const struct device *dev)
 
 	DEVICE_MMIO_MAP(dev, K_MEM_CACHE_NONE);
 	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
+printf ("***[%s], [%s], [%04d],reg_base is %x \r\n", __FILE__, __func__, __LINE__, reg_base);
 
 #ifdef CONFIG_PINCTRL
 	err = pinctrl_apply_state(dev_cfg->pincfg, PINCTRL_STATE_DEFAULT);

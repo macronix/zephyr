@@ -42,6 +42,31 @@ void flash_mspi_command_set(const struct device *dev, const struct flash_mspi_no
 	dev_data->packet.cmd = cmd->cmd;
 }
 
+
+void flash_mspi_command_set_dma(const struct device *dev, const struct flash_mspi_nor_cmd *cmd)
+{
+	struct flash_mspi_nor_data *dev_data = dev->data;
+	const struct flash_mspi_nor_config *dev_config = dev->config;
+
+	memset(&dev_data->xfer, 0, sizeof(dev_data->xfer));
+	memset(&dev_data->packet, 0, sizeof(dev_data->packet));
+
+	dev_data->xfer.xfer_mode  = MSPI_DMA;
+	dev_data->xfer.packets    = &dev_data->packet;
+	dev_data->xfer.num_packet = 1;
+	dev_data->xfer.timeout    = 10;
+
+	dev_data->xfer.cmd_length = cmd->cmd_length;
+	dev_data->xfer.addr_length = cmd->addr_length;
+	dev_data->xfer.tx_dummy = (cmd->dir == MSPI_TX) ?
+				  cmd->tx_dummy : dev_config->mspi_nor_cfg.tx_dummy;
+	dev_data->xfer.rx_dummy = (cmd->dir == MSPI_RX) ?
+				  cmd->rx_dummy : dev_config->mspi_nor_cfg.rx_dummy;
+
+	dev_data->packet.dir = cmd->dir;
+	dev_data->packet.cmd = cmd->cmd;
+}
+
 static int dev_cfg_apply(const struct device *dev, const struct mspi_dev_cfg *cfg)
 {
 	const struct flash_mspi_nor_config *dev_config = dev->config;
@@ -122,6 +147,7 @@ static int api_read(const struct device *dev, off_t addr, void *dest,
 	const uint32_t flash_size = dev_flash_size(dev);
 	int rc;
 
+
 	if (size == 0) {
 		return 0;
 	}
@@ -144,15 +170,13 @@ static int api_read(const struct device *dev, off_t addr, void *dest,
 	if (rc < 0) {
 		return rc;
 	}
-
 	/* TODO: get rid of all these hard-coded values for MX25Ux chips */
-	flash_mspi_command_set(dev, &dev_config->jedec_cmds->read);
+	flash_mspi_command_set_dma(dev, &dev_config->jedec_cmds->read);
 	dev_data->packet.address   = addr;
 	dev_data->packet.data_buf  = dest;
 	dev_data->packet.num_bytes = size;
 	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
 			     &dev_data->xfer);
-	printf ("***[%s], [%s], [%04d], dev_data->xfer rx_dummya is 0x%x\r\n", __FILE__, __func__, __LINE__,  dev_data->xfer.rx_dummy);
 
 	release(dev);
 

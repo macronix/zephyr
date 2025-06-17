@@ -55,7 +55,7 @@ DEFINE_MM_REG_RD_WR(map_rd_ctrl,	0xC4)
 DEFINE_MM_REG_RD_WR(map_wr_ctrl,		0xC8)
 DEFINE_MM_REG_RD_WR(map_cmd,		0xCC)
 DEFINE_MM_REG_RD_WR(sdma_addr,		0x2C)
-DEFINE_MM_REG_RD_WR(sdma_cnt,		0x2B)
+DEFINE_MM_REG_RD_WR(sdma_cnt,		0x28)
 
 #if defined(CONFIG_MSPI_XIP)
 struct xip_params {
@@ -620,6 +620,11 @@ static int mspi_pio_prepare(const struct device *dev, struct mspi_xfer *xfer)
 	conf |= (DIR_IN == xfer->packets->dir ? OP_DD_RD : 0);
 	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
 
+	if (MSPI_DMA == xfer->xfer_mode) {
+		conf |= TFR_MODE_DMA_EN;
+	}
+	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
+
 	write_tfr_mode(dev, conf);
 
 	return ret;
@@ -725,9 +730,12 @@ static int mspi_dma_transceive(const struct device *dev,
 	uint32_t packet_idx;
 	int ret = 0;
 	uint32_t reg_int_sts;
+				printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
+	mspi_pio_prepare(dev, xfer);
+				printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	write_int_sts(dev, INT_STS_DMA_TFR_CMPLT | INT_STS_DMA_INT);
-	mspi_pio_prepare(dev, xfer);
 
 	mxic_uefc_cs_start(dev);
 
@@ -744,6 +752,7 @@ static int mspi_dma_transceive(const struct device *dev,
 			return ret;
 		}
 	}
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	/* Set up address */
 	if (xfer->addr_length) {
@@ -757,23 +766,41 @@ static int mspi_dma_transceive(const struct device *dev,
 			mxic_uefc_err_dessert_cs(dev);
 		}
 	}
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-	uint32_t dummy_length = (MSPI_TX == xfer->packets->dir) ? xfer->tx_dummy : xfer->rx_dummy;
+	// uint32_t dummy_length = (MSPI_TX == xfer->packets->dir) ? xfer->tx_dummy : xfer->rx_dummy;
 
-	/* Setup dummy: dummy's bus width and DTR are determined by the data */
-	if (dummy_length) {
-		uint32_t dummy_len =
-			(dummy_length * (data->data_dtr + 1)) / (8 / (data->data_buswidth));
+	// /* Setup dummy: dummy's bus width and DTR are determined by the data */
+	// if (dummy_length) {
+	// 	uint32_t dummy_len =
+	// 		(dummy_length * (data->data_dtr + 1)) / (8 / (data->data_buswidth));
 
-		ret = mxic_uefc_io_mode_xfer(dev, 0, 0, dummy_len, 0);
-		if (EXIT_SUCCESS != ret) {
-			mxic_uefc_err_dessert_cs(dev);
-			return ret;
-		}
-	}
+	// 	ret = mxic_uefc_io_mode_xfer(dev, 0, 0, dummy_len, 0);
+	// 	if (EXIT_SUCCESS != ret) {
+	// 		mxic_uefc_err_dessert_cs(dev);
+	// 		return ret;
+	// 	}
+	// }
+	printf ("***[%s], [%s], [%04d], xfer->packets->num_bytes is %x\r\n", 
+			__FILE__, __func__, __LINE__, xfer->packets->num_bytes);
+
+	write_sdma_cnt(dev, xfer->packets->num_bytes);
+
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
+	printf ("***[%s], [%s], [%04d], xfer->packets->data_buf is %x\r\n", 
+		__FILE__, __func__, __LINE__, xfer->packets->data_buf);
+
+	write_sdma_addr(dev, (uint32_t)xfer->packets->data_buf);
+
+	uint32_t buf_addr = read_sdma_addr(dev);
+
+	printf ("***[%s], [%s], [%04d], buf_addr is %x\r\n", __FILE__, __func__, __LINE__, buf_addr);
 
 	/* Set up read/write Data */
 	if (xfer->packets->data_buf) {
+			printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
 		do {
 			reg_int_sts = read_int_sts(dev);
 
@@ -784,9 +811,7 @@ static int mspi_dma_transceive(const struct device *dev,
 
 		} while (!(INT_STS_DMA_TFR_CMPLT & reg_int_sts));
 	}
-
-	write_sdma_cnt(dev, xfer->packets->num_bytes);
-	write_sdma_addr(dev, (uint32_t)xfer->packets->data_buf);
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	mxic_uefc_cs_end(dev);
 }

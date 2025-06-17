@@ -32,18 +32,17 @@ int single_sector_test(const struct device *flash_dev)
 	// uint8_t buf[sizeof(expected)];
 	// int rc;
 
-
 	const size_t len = SPI_FLASH_SECTOR_SIZE;
 	uint8_t buf[SPI_FLASH_SECTOR_SIZE];
 	int rc;
 	uint8_t *buf_wr = (uint8_t * )malloc (SPI_FLASH_SECTOR_SIZE);
-	uint8_t *erased = (uint8_t * )malloc (SPI_FLASH_SECTOR_SIZE);
+	uint8_t *erased = (uint8_t * )malloc (SPI_FLASH_SECTOR_SIZE);	
+	uint8_t *buf_rd = (uint8_t * )malloc (SPI_FLASH_SECTOR_SIZE);
 
 	memset (erased, 0xff, SPI_FLASH_SECTOR_SIZE);
 	for (int n = 0; n < SPI_FLASH_SECTOR_SIZE; n++) {
 		buf_wr[n] = rand() % 0x100;
 	}
-
 
 	printf("\nPerform test on single sector");
 	/* Write protection needs to be disabled before each write or
@@ -74,23 +73,26 @@ int single_sector_test(const struct device *flash_dev)
 	}
 
 	memset(buf, 0, len);
-	rc = flash_read(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, buf, len);
+	memset(buf_rd, 0, len);
+
+	printf ("***[%s], [%s], [%04d], buf is %x\r\n", __FILE__, __func__, __LINE__, buf);
+	rc = flash_read(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, buf_rd, len);
 	if (rc != 0) {
 		printf("Flash read failed! %d\n", rc);
 		return 1;
 	}
 
-	if (memcmp(buf_wr, buf, len) == 0) {
+	if (memcmp(buf_wr, buf_rd, len) == 0) {
 		printf("Data read matches data written. Good!!\n");
 	} else {
 		const uint8_t *wp = buf_wr;
-		const uint8_t *rp = buf;
+		const uint8_t *rp = buf_rd;
 		const uint8_t *rpe = rp + len;
 
 		printf("Data read does not match data written!!\n");
 		while (rp < rpe) {
 			printf("%08x wrote %02x read %02x %s\n",
-			       (uint32_t)(SPI_FLASH_TEST_REGION_OFFSET + (rp - buf)),
+			       (uint32_t)(SPI_FLASH_TEST_REGION_OFFSET + (rp - buf_rd)),
 			       *wp, *rp, (*rp == *wp) ? "match" : "MISMATCH");
 			++rp;
 			++wp;
@@ -141,6 +143,7 @@ int multi_sector_test(const struct device *flash_dev)
 
 		while (offs < SPI_FLASH_TEST_REGION_OFFSET + 2 * SPI_FLASH_SECTOR_SIZE) {
 			rc = flash_read(flash_dev, offs, buf, len);
+			printf ("***[%s], [%s], [%04d], buf is %x\r\n", __FILE__, __func__, __LINE__, buf);
 			if (rc != 0) {
 				printf("Flash read failed! %d\n", rc);
 				return 1;

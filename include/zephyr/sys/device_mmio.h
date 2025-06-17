@@ -107,11 +107,16 @@ printf ("***[%s], [%s], [%04d], phys_addr is %x\r\n", __FILE__, __func__, __LINE
 			    flags | K_MEM_PERM_RW);
 
 #else
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
 	ARG_UNUSED(size);
 	ARG_UNUSED(flags);
 #ifdef CONFIG_EXTERNAL_ADDRESS_TRANSLATION
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
 	sys_mm_drv_page_phys_get((void *) phys_addr, virt_addr);
 #else
+printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	*virt_addr = phys_addr;
 

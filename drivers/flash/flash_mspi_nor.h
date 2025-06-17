@@ -114,10 +114,10 @@ const struct flash_mspi_nor_cmds commands_single = {
 	},
 	.read = {
 		.dir = MSPI_RX,
-		.cmd = SPI_NOR_CMD_READ_FAST,
+		.cmd = SPI_NOR_CMD_READ,
 		.cmd_length = 1,
 		.addr_length = 3,
-		.rx_dummy = 8,
+		.rx_dummy = 0,
 	},
 	.status = {
 		.dir = MSPI_RX,
