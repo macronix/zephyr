@@ -111,6 +111,9 @@ static int mxic_uefc_init(const struct device *dev)
 	uint32_t uefc_version = 0;
 
 	DEVICE_MMIO_MAP(dev, K_MEM_CACHE_NONE);
+	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
+	printf("***[%s], [%s], [%04d], FSDFA reg_base is %x\r\n", __FILE__, __func__, __LINE__,
+	       reg_base);
 
 	write_base_map_addr(dev, UEFC_BASE_MAP_ADDR);
 	write_top_map_addr(dev, UEFC_TOP_MAP_ADDR);
@@ -242,7 +245,7 @@ static int mxic_uefc_io_mode_xfer(const struct device *dev, void *tx, void *rx, 
 		if (EXIT_SUCCESS != ret) {
 			return ret;
 		}
-		
+
 		data = read_rxd_reg(dev);
 		if (rx) {
 			memcpy(rx + ofs, &data, tmp ? tmp : nbytes);
