@@ -37,7 +37,7 @@ int single_sector_test(const struct device *flash_dev)
 	int rc;
 	uint8_t *buf_wr = (uint8_t * )malloc (SPI_FLASH_SECTOR_SIZE);
 	uint8_t *erased = (uint8_t * )malloc (SPI_FLASH_SECTOR_SIZE);	
-	uint8_t *buf_rd = (uint8_t * )malloc (SPI_FLASH_SECTOR_SIZE);
+	volatile uint8_t *buf_rd = (uint8_t * )malloc (SPI_FLASH_SECTOR_SIZE);
 
 	memset (erased, 0xff, SPI_FLASH_SECTOR_SIZE);
 	for (int n = 0; n < SPI_FLASH_SECTOR_SIZE; n++) {
@@ -71,12 +71,18 @@ int single_sector_test(const struct device *flash_dev)
 		printf("Flash write failed! %d\n", rc);
 		return 1;
 	}
+	uint8_t * dma_buf = (uint8_t *)0xfffd0000;
 
 	memset(buf, 0, len);
 	memset(buf_rd, 0, len);
+	memset(dma_buf, 0, len);
 
-	printf ("***[%s], [%s], [%04d], buf is %x\r\n", __FILE__, __func__, __LINE__, buf);
-	rc = flash_read(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, buf_rd, len);
+	for (int i = 0; i < 32; i++) {
+printf ("***[%s], [%s], [%04d], buf_rd is %x\r\n", __FILE__, __func__, __LINE__, dma_buf[i]);
+
+	}
+	printf ("***[%s], [%s], [%04d], buf_rd is %x\r\n", __FILE__, __func__, __LINE__, buf_rd);
+	rc = flash_read(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, dma_buf, len);
 	if (rc != 0) {
 		printf("Flash read failed! %d\n", rc);
 		return 1;
@@ -86,17 +92,23 @@ int single_sector_test(const struct device *flash_dev)
 		printf("Data read matches data written. Good!!\n");
 	} else {
 		const uint8_t *wp = buf_wr;
-		const uint8_t *rp = buf_rd;
+		const uint8_t *rp = dma_buf;
 		const uint8_t *rpe = rp + len;
 
 		printf("Data read does not match data written!!\n");
 		while (rp < rpe) {
 			printf("%08x wrote %02x read %02x %s\n",
-			       (uint32_t)(SPI_FLASH_TEST_REGION_OFFSET + (rp - buf_rd)),
+			       (uint32_t)(SPI_FLASH_TEST_REGION_OFFSET + (rp - dma_buf)),
 			       *wp, *rp, (*rp == *wp) ? "match" : "MISMATCH");
 			++rp;
 			++wp;
 		}
+
+	}
+
+	for (int i = 0; i < 32; i++) {
+printf ("***[%s], [%s], [%04d], buf_rd is %x\r\n", __FILE__, __func__, __LINE__, dma_buf[i]);
+
 	}
 	return rc;
 }
@@ -202,7 +214,15 @@ int multi_sector_test(const struct device *flash_dev)
 int main(void)
 {
  	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+unsigned int sctlr = __get_SCTLR();
+printf ("***[%s], [%s], [%04d], sctlr is %x\r\n", __FILE__, __func__, __LINE__, sctlr);
 
+	sctlr &= ~0x00000001;
+	__set_SCTLR(sctlr);
+	sctlr = __get_SCTLR();
+
+
+printf ("***[%s], [%s], [%04d], sctlr is %x\r\n", __FILE__, __func__, __LINE__, sctlr);
 	const struct device *mspi_dev = DEVICE_DT_GET_ONE(XLNX_MSPI_COMPAT);
 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
@@ -253,10 +273,13 @@ int main(void)
 
 // 	printf("\n%s SPI flash testing\n", flash_dev->name);
 	printf("==========================\n");
-
+  sctlr = __get_SCTLR();
+printf ("***[%s], [%s], [%04d], sctlr is %x\r\n", __FILE__, __func__, __LINE__, sctlr);
 	if (single_sector_test(flash_dev)) {
 		return 1;
 	}
+	  sctlr = __get_SCTLR();
+printf ("***[%s], [%s], [%04d], sctlr is %x\r\n", __FILE__, __func__, __LINE__, sctlr);
 // #if defined SPI_FLASH_MULTI_SECTOR_TEST
 // 	if (multi_sector_test(flash_dev)) {
 // 		return 1;

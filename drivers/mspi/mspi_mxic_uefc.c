@@ -791,11 +791,9 @@ static int mspi_dma_transceive(const struct device *dev,
 	printf ("***[%s], [%s], [%04d], xfer->packets->data_buf is %x\r\n", 
 		__FILE__, __func__, __LINE__, xfer->packets->data_buf);
 
-	write_sdma_addr(dev, (uint32_t)xfer->packets->data_buf);
+	write_sdma_addr(dev, xfer->packets->data_buf);
 
 	uint32_t buf_addr = read_sdma_addr(dev);
-
-	printf ("***[%s], [%s], [%04d], buf_addr is %x\r\n", __FILE__, __func__, __LINE__, buf_addr);
 
 	/* Set up read/write Data */
 	if (xfer->packets->data_buf) {
@@ -803,10 +801,11 @@ static int mspi_dma_transceive(const struct device *dev,
 
 		do {
 			reg_int_sts = read_int_sts(dev);
+			buf_addr = read_sdma_addr(dev);
 
 			if (INT_STS_DMA_INT & reg_int_sts) {
 				write_int_sts(dev, INT_STS_DMA_INT);
-				write_sdma_addr(dev, read_sdma_addr(dev));
+				write_sdma_addr(dev, buf_addr);
 			}
 
 		} while (!(INT_STS_DMA_TFR_CMPLT & reg_int_sts));

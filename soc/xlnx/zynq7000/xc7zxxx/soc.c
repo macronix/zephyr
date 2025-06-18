@@ -97,9 +97,11 @@ void soc_reset_hook(void)
 	sctlr &= ~SCTLR_C_Msk;
 	sctlr &= ~SCTLR_A_Msk;
 	__set_SCTLR(sctlr);
+printf ("***[%s], [%s], [%04d], fsaf sctlr is %x\r\n", __FILE__, __func__, __LINE__, sctlr);
 
 #if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(slcr))
 	mm_reg_t addr = DT_REG_ADDR(DT_NODELABEL(slcr));
+printf ("***[%s], [%s], [%04d], fsaf sctlr is %x\r\n", __FILE__, __func__, __LINE__, sctlr);
 
 	/* Unlock System Level Control Registers (SLCR) */
 	sys_write32(SLCR_UNLOCK_KEY, addr + SLCR_UNLOCK);
