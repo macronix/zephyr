@@ -116,6 +116,11 @@ static int mxic_uefc_init(const struct device *dev)
 	       reg_base);
 
 	write_base_map_addr(dev, UEFC_BASE_MAP_ADDR);
+
+	update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, HC_CTRL_CH_LUN_PORT(A, 0, 0));
+	write_top_map_addr(dev, UEFC_TOP_MAP_ADDR);
+
+	update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, HC_CTRL_CH_LUN_PORT(B, 0, 0));
 	write_top_map_addr(dev, UEFC_TOP_MAP_ADDR);
 
 	update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, UEFC_CH_LUN_PORT);
@@ -140,8 +145,8 @@ static int mxic_uefc_init(const struct device *dev)
 	write_int_sts_en(dev,  INT_STS_DMA | INT_STS_EN_DMA_TFR_CMPLT);
 
 	/*TODO: hard coded*/
-	write_sample_adj(dev,  SAMPLE_ADJ_DQS_IDLY_DOPI(29) | SAMPLE_ADJ_POINT_SEL_DDR(0) |
-			  SAMPLE_ADJ_POINT_SEL_SDR(2));
+	write_sample_adj(dev,  SAMPLE_ADJ_DQS_IDLY_DOPI(0) | SAMPLE_ADJ_POINT_SEL_DDR(0) |
+			  SAMPLE_ADJ_POINT_SEL_SDR(1));
 
 	write_sio_idly_1(dev,  SIO_IDLY_1_0123(0));
 
@@ -326,23 +331,14 @@ static uint32_t mspi_mxic_set_line(struct mspi_mxic_data *data, enum mspi_io_mod
 	data_bus = data_lines == 1 ? 0 : data_lines == 2 ? 1 : data_lines == 4 ? 2 : 3;
 
 	uint32_t conf = OP_CMD_BUSW(cmd_bus) | OP_CMD_DTR(cmd_ddr ? 1 : 0);
-	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
-	printf ("***[%s], [%s], [%04d], cmd_bus is %x\r\n", __FILE__, __func__, __LINE__, cmd_bus);
 
 	conf |= OP_ADDR_BUSW(addr_bus) |
 		OP_ADDR_DTR(addr_ddr ? 1 : 0);
-	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
-	printf ("***[%s], [%s], [%04d], addr_bus is %x\r\n", __FILE__, __func__, __LINE__, addr_bus);
 
 	conf |= OP_DATA_BUSW(data_bus) | OP_DATA_DTR(data_ddr ? 1 : 0);
-	printf ("***[%s], [%s], [%04d], data_bus is %x\r\n", __FILE__, __func__, __LINE__, data_bus);
 
 	data->data_buswidth = data_lines;
 	data->data_dtr = data_ddr;
-
-	printf ("***[%s], [%s], [%04d], data_lines is %x\r\n", __FILE__, __func__, __LINE__, data_lines);
-	printf ("***[%s], [%s], [%04d], data_ddr is %x\r\n", __FILE__, __func__, __LINE__, data_ddr);
-	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
 
 	return conf;
 }
@@ -398,8 +394,7 @@ static int _api_dev_config(const struct device *dev,
 			return -ENOTSUP;
 		}
 
-		update_hc_ctrl(dev, HC_CTRL_DATA_ORDER, (MSPI_XFER_LITTLE_ENDIAN == cfg->endian) ?
-			HC_CTRL_DATA_ORDER : 0);
+
 	}
 
 	if (param_mask & MSPI_DEVICE_CONFIG_CE_POL) {
@@ -461,7 +456,9 @@ static int _api_dev_config(const struct device *dev,
 
 	if (param_mask & MSPI_DEVICE_CONFIG_DQS) {
 		if (cfg->dqs_enable) {
-			update_dev_ctrl(dev, DEV_CTRL_DQS_EN, cfg->dqs_enable ? DEV_CTRL_DQS_EN : 0);			
+			update_dev_ctrl(dev, DEV_CTRL_DQS_EN, cfg->dqs_enable ? DEV_CTRL_DQS_EN : 0);	
+
+			// update_hc_ctrl(dev, HC_CTRL_DATA_ORDER, cfg->dqs_enable ? HC_CTRL_DATA_ORDER : 0);
 		}
 	}
 
@@ -515,32 +512,30 @@ static int _api_xip_config(const struct device *dev,
 		uint8_t write_cmd = params->write_cmd;
 		
 		write_tfr_ctrl(dev, TFR_CTRL_IO_END);
+		// write_tfr_mode(dev, 0x10008080);
+
+
 
 		enum mspi_io_mode io_mode = params->io_mode;
 		enum mspi_data_rate data_rate = params->data_rate;
 		uint16_t rx_dummy = params->rx_dummy;
 		uint16_t tx_dummy = params->tx_dummy;
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 		uint32_t conf = mspi_mxic_set_line(dev_data, io_mode, data_rate);
-			printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 		ctrl.read |= conf;
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 		ctrl.read  |=  OP_DD_RD | OP_ADDR_CNT(params->addr_length);
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 		ctrl.write |= conf;
 		ctrl.read  |= OP_DMY_CNT(rx_dummy, dev_data->data_dtr, dev_data->data_buswidth);
 		ctrl.write  |= OP_DMY_CNT(tx_dummy, dev_data->data_dtr, dev_data->data_buswidth);
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-		write_map_rd_ctrl(dev, ctrl.read);
-		write_map_wr_ctrl(dev, ctrl.write);
-	printf ("***[%s], [%s], [%04d], ctrl.read  is %x\r\n", __FILE__, __func__, __LINE__, ctrl.read );
+		write_map_rd_ctrl(dev, 0xc0010);
+		conf = read_map_rd_ctrl(dev);
+				conf = read_tfr_mode(dev);
 
-		write_map_cmd(dev, read_cmd);
+		write_map_cmd(dev, 0xfc03);
 			printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	} else if (dev_data->xip_params_active.read_cmd !=
@@ -593,37 +588,22 @@ static int mspi_pio_prepare(const struct device *dev, struct mspi_xfer *xfer)
 	struct mspi_mxic_data *data = dev->data;
 
 	int ret = 0;
-	printf ("***[%s], [%s], [%04d],  xfer->rx_dummy is %x\r\n", __FILE__, __func__, __LINE__,  xfer->rx_dummy);
 
 	uint32_t conf = read_tfr_mode(dev);
-	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
-
-	uint32_t conf_1 = 0;
 
 	uint16_t dummy_len = DIR_IN == xfer->packets->dir ? xfer->rx_dummy : xfer->tx_dummy;
-	printf ("***[%s], [%s], [%04d], dummy_len is %x\r\n", __FILE__, __func__, __LINE__, dummy_len);
 
 	conf &= ~(TFR_MODE_ADDR_CNT_MASK | TFR_MODE_CMD_CNT | TFR_MODE_DMY_MASK | OP_DD_RD);
-	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
 
 	conf |= OP_CMD_CNT(xfer->cmd_length) | OP_ADDR_CNT(xfer->addr_length);
-	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
-
-	conf_1 = OP_DMY_CNT(dummy_len, data->data_dtr, data->data_buswidth);
-	printf ("***[%s], [%s], [%04d], conf_1 is %x\r\n", __FILE__, __func__, __LINE__, conf_1);
-	printf ("***[%s], [%s], [%04d], data->data_dtr is %x\r\n", __FILE__, __func__, __LINE__, data->data_dtr);
-	printf ("***[%s], [%s], [%04d], data->data_buswidth is %x\r\n", __FILE__, __func__, __LINE__, data->data_buswidth);
 
 	conf |= OP_DMY_CNT(dummy_len, data->data_dtr, data->data_buswidth);
-	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
 
 	conf |= (DIR_IN == xfer->packets->dir ? OP_DD_RD : 0);
-	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
 
 	if (MSPI_DMA == xfer->xfer_mode) {
 		conf |= TFR_MODE_DMA_EN;
 	}
-	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
 
 	write_tfr_mode(dev, conf);
 
@@ -646,7 +626,6 @@ static int mspi_pio_transceive(const struct device *dev, const struct mspi_xfer 
 	/* Set up command  */
 	if (xfer->cmd_length) {
 		uint32_t cmd = swap32(xfer->packets->cmd,  xfer->cmd_length);
-				printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 		ret = mxic_uefc_io_mode_xfer(dev, (uint8_t *)&cmd, 0,
 					     xfer->cmd_length, 0);
@@ -660,7 +639,6 @@ static int mspi_pio_transceive(const struct device *dev, const struct mspi_xfer 
 	/* Set up address */
 	if (xfer->addr_length) {
 		uint32_t addr = swap32(xfer->packets->address,  xfer->addr_length);
-		printf("***[%s], [%s], [%04d], xfer->addr_length is %x\r\n", __FILE__, __func__, __LINE__, xfer->addr_length);
 
 		ret = mxic_uefc_io_mode_xfer(dev, (uint8_t *)&addr, 0,
 					     xfer->addr_length, 0);
@@ -670,8 +648,6 @@ static int mspi_pio_transceive(const struct device *dev, const struct mspi_xfer 
 			mxic_uefc_err_dessert_cs(dev);
 		}
 	}
-		printf("***[%s], [%s], [%04d], xfer->rx_dummy is %x\r\n", __FILE__, __func__, __LINE__, xfer->rx_dummy);
-		printf("***[%s], [%s], [%04d], xfer->tx_dummy is %x\r\n", __FILE__, __func__, __LINE__, xfer->tx_dummy);
 
 	uint32_t dummy_length = (MSPI_TX == xfer->packets->dir) ? xfer->tx_dummy : xfer->rx_dummy;
 
@@ -679,12 +655,6 @@ static int mspi_pio_transceive(const struct device *dev, const struct mspi_xfer 
 	if (dummy_length) {
 		uint32_t dummy_len =
 			(dummy_length * (data->data_dtr + 1)) / (8 / (data->data_buswidth));
-					printf("***[%s], [%s], [%04d], dummy_length is %x\r\n", __FILE__, __func__, __LINE__, dummy_length);
-		printf("***[%s], [%s], [%04d], data->data_buswidth is %x\r\n", __FILE__, __func__, __LINE__, data->data_buswidth);
-
-		printf("***[%s], [%s], [%04d], data->data_buswidth is %x\r\n", __FILE__, __func__, __LINE__, data->data_buswidth);
-
-		printf("***[%s], [%s], [%04d], dummy_len is %x\r\n", __FILE__, __func__, __LINE__, dummy_len);
 
 		ret = mxic_uefc_io_mode_xfer(dev, 0, 0, dummy_len, 0);
 		if (EXIT_SUCCESS != ret) {
@@ -692,20 +662,14 @@ static int mspi_pio_transceive(const struct device *dev, const struct mspi_xfer 
 			return ret;
 		}
 	}
-	printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	/* Set up read/write Data */
 	if (xfer->packets->data_buf) {
-		printf("***[%s], [%s], [%04d], xfer->packets->data_buf is %x\r\n", __FILE__,
-		       __func__, __LINE__, xfer->packets->data_buf[0]);
 
 		ret = mxic_uefc_io_mode_xfer(
 			dev, MSPI_TX == xfer->packets->dir ? xfer->packets->data_buf : 0,
 			MSPI_RX == xfer->packets->dir ? xfer->packets->data_buf : 0,
 			xfer->packets->num_bytes, 1);
-
-		printf("***[%s], [%s], [%04d], xfer->packets->data_buf is %x\r\n", __FILE__,
-		       __func__, __LINE__, xfer->packets->data_buf[0]);
 
 		if (EXIT_SUCCESS != ret) {
 			mxic_uefc_err_dessert_cs(dev);
@@ -714,7 +678,6 @@ static int mspi_pio_transceive(const struct device *dev, const struct mspi_xfer 
 	}
 
 	mxic_uefc_cs_end(dev);
-	printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	return ret;
 }
@@ -768,19 +731,19 @@ static int mspi_dma_transceive(const struct device *dev,
 	}
 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-	// uint32_t dummy_length = (MSPI_TX == xfer->packets->dir) ? xfer->tx_dummy : xfer->rx_dummy;
+	uint32_t dummy_length = (MSPI_TX == xfer->packets->dir) ? xfer->tx_dummy : xfer->rx_dummy;
 
-	// /* Setup dummy: dummy's bus width and DTR are determined by the data */
-	// if (dummy_length) {
-	// 	uint32_t dummy_len =
-	// 		(dummy_length * (data->data_dtr + 1)) / (8 / (data->data_buswidth));
+	/* Setup dummy: dummy's bus width and DTR are determined by the data */
+	if (dummy_length) {
+		uint32_t dummy_len =
+			(dummy_length * (data->data_dtr + 1)) / (8 / (data->data_buswidth));
 
-	// 	ret = mxic_uefc_io_mode_xfer(dev, 0, 0, dummy_len, 0);
-	// 	if (EXIT_SUCCESS != ret) {
-	// 		mxic_uefc_err_dessert_cs(dev);
-	// 		return ret;
-	// 	}
-	// }
+		ret = mxic_uefc_io_mode_xfer(dev, 0, 0, dummy_len, 0);
+		if (EXIT_SUCCESS != ret) {
+			mxic_uefc_err_dessert_cs(dev);
+			return ret;
+		}
+	}
 	printf ("***[%s], [%s], [%04d], xfer->packets->num_bytes is %x\r\n", 
 			__FILE__, __func__, __LINE__, xfer->packets->num_bytes);
 
@@ -788,16 +751,12 @@ static int mspi_dma_transceive(const struct device *dev,
 
 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
-	printf ("***[%s], [%s], [%04d], xfer->packets->data_buf is %x\r\n", 
-		__FILE__, __func__, __LINE__, xfer->packets->data_buf);
-
 	write_sdma_addr(dev, xfer->packets->data_buf);
 
 	uint32_t buf_addr = read_sdma_addr(dev);
 
 	/* Set up read/write Data */
 	if (xfer->packets->data_buf) {
-			printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 		do {
 			reg_int_sts = read_int_sts(dev);
@@ -810,7 +769,6 @@ static int mspi_dma_transceive(const struct device *dev,
 
 		} while (!(INT_STS_DMA_TFR_CMPLT & reg_int_sts));
 	}
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	mxic_uefc_cs_end(dev);
 }

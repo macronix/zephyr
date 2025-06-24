@@ -20,6 +20,25 @@ extern "C" {
 #define WITH_RESET_GPIO 1
 #endif
 
+const struct mspi_dev_cfg mspi_dev_cfg_octal = {
+	.ce_num = 0,
+	.freq = 25000000,
+	.io_mode = MSPI_IO_MODE_OCTAL,
+	.data_rate = MSPI_DATA_RATE_DUAL,
+	.cpp = MSPI_CPP_MODE_0,
+	.endian = MSPI_XFER_BIG_ENDIAN,
+	.ce_polarity = MSPI_CE_ACTIVE_LOW,
+	.dqs_enable = true,
+	.rx_dummy = 20,
+	.tx_dummy = 0,
+	.read_cmd = SPI_NOR_OCMD_DTR_RD,
+	.write_cmd = SPI_NOR_OCMD_PAGE_PRG,
+	.cmd_length = 2,
+	.addr_length = 4,
+	.mem_boundary = 0,
+	.time_to_break = 0,
+};
+
 const struct mspi_dev_cfg mspi_dev_cfg_xip = {
 	.ce_num = 0,
 	.freq = 25000000,

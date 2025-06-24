@@ -535,7 +535,7 @@ static int default_io_mode(const struct device *dev)
 	enum mspi_io_mode io_mode = dev_config->mspi_nor_cfg.io_mode;
 	uint8_t *buf = (uint8_t *)k_malloc(0x1000);
 	int rc = 0;
-	// rc = octal_enable_set(dev);
+	rc = octal_enable_set(dev);
 	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
 
 	dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);

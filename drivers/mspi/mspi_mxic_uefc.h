@@ -618,5 +618,3 @@ struct mspi_context {
 
 	struct k_sem lock;
 };
-
-

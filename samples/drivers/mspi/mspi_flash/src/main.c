@@ -71,16 +71,12 @@ int single_sector_test(const struct device *flash_dev)
 		printf("Flash write failed! %d\n", rc);
 		return 1;
 	}
-	uint8_t * dma_buf = (uint8_t *)0xfffd0000;
+	uint8_t * dma_buf = (uint8_t *)0x200000;
 
 	memset(buf, 0, len);
 	memset(buf_rd, 0, len);
 	memset(dma_buf, 0, len);
 
-	for (int i = 0; i < 32; i++) {
-printf ("***[%s], [%s], [%04d], buf_rd is %x\r\n", __FILE__, __func__, __LINE__, dma_buf[i]);
-
-	}
 	printf ("***[%s], [%s], [%04d], buf_rd is %x\r\n", __FILE__, __func__, __LINE__, buf_rd);
 	rc = flash_read(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, dma_buf, len);
 	if (rc != 0) {
