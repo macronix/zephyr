@@ -145,8 +145,8 @@ static int mxic_uefc_init(const struct device *dev)
 	write_int_sts_en(dev,  INT_STS_DMA | INT_STS_EN_DMA_TFR_CMPLT);
 
 	/*TODO: hard coded*/
-	write_sample_adj(dev,  SAMPLE_ADJ_DQS_IDLY_DOPI(0) | SAMPLE_ADJ_POINT_SEL_DDR(0) |
-			  SAMPLE_ADJ_POINT_SEL_SDR(1));
+	write_sample_adj(dev,  SAMPLE_ADJ_DQS_IDLY_DOPI(29) | SAMPLE_ADJ_POINT_SEL_DDR(0) |
+			  SAMPLE_ADJ_POINT_SEL_SDR(2));
 
 	write_sio_idly_1(dev,  SIO_IDLY_1_0123(0));
 
@@ -458,7 +458,7 @@ static int _api_dev_config(const struct device *dev,
 		if (cfg->dqs_enable) {
 			update_dev_ctrl(dev, DEV_CTRL_DQS_EN, cfg->dqs_enable ? DEV_CTRL_DQS_EN : 0);	
 
-			// update_hc_ctrl(dev, HC_CTRL_DATA_ORDER, cfg->dqs_enable ? HC_CTRL_DATA_ORDER : 0);
+			update_hc_ctrl(dev, HC_CTRL_DATA_ORDER, cfg->dqs_enable ? HC_CTRL_DATA_ORDER : 0);
 		}
 	}
 
@@ -510,33 +510,34 @@ static int _api_xip_config(const struct device *dev,
 
 		uint8_t read_cmd = params->read_cmd;
 		uint8_t write_cmd = params->write_cmd;
+
+		uint8_t cmd_length = params->cmd_length;
 		
 		write_tfr_ctrl(dev, TFR_CTRL_IO_END);
 		// write_tfr_mode(dev, 0x10008080);
-
-
 
 		enum mspi_io_mode io_mode = params->io_mode;
 		enum mspi_data_rate data_rate = params->data_rate;
 		uint16_t rx_dummy = params->rx_dummy;
 		uint16_t tx_dummy = params->tx_dummy;
-
 		uint32_t conf = mspi_mxic_set_line(dev_data, io_mode, data_rate);
 
 		ctrl.read |= conf;
 
-		ctrl.read  |=  OP_DD_RD | OP_ADDR_CNT(params->addr_length);
+		ctrl.read  |=  OP_DD_RD | OP_CMD_CNT(cmd_length) | OP_ADDR_CNT(params->addr_length);
 
 		ctrl.write |= conf;
 		ctrl.read  |= OP_DMY_CNT(rx_dummy, dev_data->data_dtr, dev_data->data_buswidth);
 		ctrl.write  |= OP_DMY_CNT(tx_dummy, dev_data->data_dtr, dev_data->data_buswidth);
 
-		write_map_rd_ctrl(dev, 0xc0010);
+		write_map_rd_ctrl(dev, 0x293ff10);
 		conf = read_map_rd_ctrl(dev);
-				conf = read_tfr_mode(dev);
+		printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
 
-		write_map_cmd(dev, 0xfc03);
-			printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+		conf = read_hc_ctrl(dev);
+
+		write_map_cmd(dev, 0x11ee);
+		printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
 
 	} else if (dev_data->xip_params_active.read_cmd !=
 		   dev_data->xip_params_stored.read_cmd ||

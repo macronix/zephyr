@@ -269,13 +269,9 @@ printf ("***[%s], [%s], [%04d], sctlr is %x\r\n", __FILE__, __func__, __LINE__, 
 
 // 	printf("\n%s SPI flash testing\n", flash_dev->name);
 	printf("==========================\n");
-  sctlr = __get_SCTLR();
-printf ("***[%s], [%s], [%04d], sctlr is %x\r\n", __FILE__, __func__, __LINE__, sctlr);
-	if (single_sector_test(flash_dev)) {
-		return 1;
-	}
-	  sctlr = __get_SCTLR();
-printf ("***[%s], [%s], [%04d], sctlr is %x\r\n", __FILE__, __func__, __LINE__, sctlr);
+	// if (single_sector_test(flash_dev)) {
+	// 	return 1;
+	// }
 // #if defined SPI_FLASH_MULTI_SECTOR_TEST
 // 	if (multi_sector_test(flash_dev)) {
 // 		return 1;
