@@ -546,7 +546,7 @@ static int default_io_mode(const struct device *dev)
 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	// memcpy(buf, dev_data->flash_mmio, 32);
-	memcpy(buf, reg_base, 32);
+	memcpy(buf, 0x60000000, 32);
 
 
 	for (int i = 0; i < 32; i++) {
