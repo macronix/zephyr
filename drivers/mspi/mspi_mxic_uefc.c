@@ -533,7 +533,7 @@ static int _api_xip_config(const struct device *dev,
 
 		uint16_t read_cmd = params->read_cmd;
 		uint16_t write_cmd = params->write_cmd;
-		printf ("***[%s], [%s], [%04d], ctrl.read_cmd  is %x\r\n", __FILE__, __func__, __LINE__,read_cmd );
+		printf ("***[%s], [%s], [%04d], ctrl.read_cmd  is %x\r\n", __FILE__, __func__, __LINE__, read_cmd);
 
 		uint8_t cmd_length = params->cmd_length;
 		
@@ -555,8 +555,13 @@ static int _api_xip_config(const struct device *dev,
 		printf ("***[%s], [%s], [%04d], ctrl.read  is %x\r\n", __FILE__, __func__, __LINE__, ctrl.read );
 
 		write_map_rd_ctrl(dev, ctrl.read);
+		write_map_wr_ctrl(dev, ctrl.write);
+// || write_cmd << 16
+		write_map_cmd(dev, read_cmd );
+		conf = read_map_cmd(dev);
+		printf ("***[%s], [%s], [%04d], ctrl.conf  is %x\r\n", __FILE__, __func__, __LINE__, conf );
 
-		write_map_cmd(dev, read_cmd);
+
 	} else if (dev_data->xip_params_active.read_cmd !=
 		   dev_data->xip_params_stored.read_cmd ||
 		   dev_data->xip_params_active.write_cmd !=
@@ -732,6 +737,7 @@ static int mspi_dma_transceive(const struct device *dev,
 	/* Set up command  */
 	if (xfer->cmd_length) {
 		uint32_t cmd = swap32(xfer->packets->cmd,  xfer->cmd_length);
+		printf ("***[%s], [%s], [%04d], dma cmd is %x\r\n", __FILE__, __func__, __LINE__, cmd);
 
 		ret = mxic_uefc_io_mode_xfer(dev, (uint8_t *)&cmd, 0,
 					     xfer->cmd_length, 0);
@@ -772,6 +778,10 @@ static int mspi_dma_transceive(const struct device *dev,
 	write_sdma_cnt(dev, xfer->packets->num_bytes);
 
 	write_sdma_addr(dev, xfer->packets->data_buf);
+
+	for (int i = 0; i < 32; i++) {
+		printf ("***[%s], [%s], [%04d], dma trasc is %x\r\n", __FILE__, __func__, __LINE__, xfer->packets->data_buf[i]);
+	}
 
 	uint32_t buf_addr = read_sdma_addr(dev);
 

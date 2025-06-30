@@ -35,7 +35,7 @@ int single_sector_test(const struct device *flash_dev)
 	const size_t len = SPI_FLASH_SECTOR_SIZE;
 	uint8_t buf[SPI_FLASH_SECTOR_SIZE];
 	int rc;
-	uint8_t *buf_wr = (uint8_t * )malloc (SPI_FLASH_SECTOR_SIZE);
+	uint8_t *buf_wr = (uint8_t * )(0xfffd0000);
 	uint8_t *erased = (uint8_t * )malloc (SPI_FLASH_SECTOR_SIZE);	
 	volatile uint8_t *buf_rd = (uint8_t * )malloc (SPI_FLASH_SECTOR_SIZE);
 
@@ -51,6 +51,7 @@ int single_sector_test(const struct device *flash_dev)
 	 * operations.
 	 */
 	printf("\nTest 1: Flash erase\n");
+	uint8_t * dma_buf = (uint8_t *)0x200000;
 
 	/* Full flash erase if SPI_FLASH_TEST_REGION_OFFSET = 0 and
 	 * SPI_FLASH_SECTOR_SIZE = flash size
@@ -71,7 +72,6 @@ int single_sector_test(const struct device *flash_dev)
 		printf("Flash write failed! %d\n", rc);
 		return 1;
 	}
-	uint8_t * dma_buf = (uint8_t *)0x200000;
 
 	memset(buf, 0, len);
 	memset(buf_rd, 0, len);
@@ -269,9 +269,9 @@ printf ("***[%s], [%s], [%04d], sctlr is %x\r\n", __FILE__, __func__, __LINE__, 
 
 // 	printf("\n%s SPI flash testing\n", flash_dev->name);
 	printf("==========================\n");
-	if (single_sector_test(flash_dev)) {
-		return 1;
-	}
+	// if (single_sector_test(flash_dev)) {
+	// 	return 1;
+	// }
 // #if defined SPI_FLASH_MULTI_SECTOR_TEST
 // 	if (multi_sector_test(flash_dev)) {
 // 		return 1;

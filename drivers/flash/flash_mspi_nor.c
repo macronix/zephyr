@@ -18,6 +18,9 @@
 #define UEFC_MAP_SIZE			0x00800000
 LOG_MODULE_REGISTER(flash_mspi_nor, CONFIG_FLASH_LOG_LEVEL);
 
+#define XIP_RD_WR 1
+#define DMA_RD_WR 0
+
 void flash_mspi_command_set(const struct device *dev, const struct flash_mspi_nor_cmd *cmd)
 {
 	struct flash_mspi_nor_data *dev_data = dev->data;
@@ -41,7 +44,6 @@ void flash_mspi_command_set(const struct device *dev, const struct flash_mspi_no
 	dev_data->packet.dir = cmd->dir;
 	dev_data->packet.cmd = cmd->cmd;
 }
-
 
 void flash_mspi_command_set_dma(const struct device *dev, const struct flash_mspi_nor_cmd *cmd)
 {
@@ -161,23 +163,30 @@ static int api_read(const struct device *dev, off_t addr, void *dest,
 		return rc;
 	}
 
-	if (dev_config->jedec_cmds->read.force_single) {
-		rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
-	} else {
-		rc = dev_cfg_apply(dev, &mspi_dev_cfg_122);
-	}
+	// if (dev_config->jedec_cmds->read.force_single) {
+	// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
+	// } else {
+	// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
+	// }
 
 	if (rc < 0) {
 		return rc;
 	}
-	/* TODO: get rid of all these hard-coded values for MX25Ux chips */
+
+#if (!XIP_RD_WR)
+#if DMA_RD_WR
+	flash_mspi_command_set_dma(dev, &dev_config->jedec_cmds->read);
+#else
 	flash_mspi_command_set(dev, &dev_config->jedec_cmds->read);
+#endif
 	dev_data->packet.address   = addr;
 	dev_data->packet.data_buf  = dest;
 	dev_data->packet.num_bytes = size;
 	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
 			     &dev_data->xfer);
-
+#else
+	memcpy(dest, (0x60000000 + addr), size);
+#endif
 	release(dev);
 
 	if (rc < 0) {
@@ -195,11 +204,11 @@ static int status_get(const struct device *dev, uint8_t *status)
 	int rc;
 
 	/* Enter command mode */
-	if (dev_config->jedec_cmds->status.force_single) {
-		rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
-	} else {
-		rc = dev_cfg_apply(dev, &mspi_dev_cfg_122);
-	}
+	// if (dev_config->jedec_cmds->status.force_single) {
+	// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
+	// } else {
+	// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
+	// }
 
 	if (rc < 0) {
 		LOG_ERR("Switching to dev_cfg failed: %d", rc);
@@ -249,11 +258,11 @@ static int write_enable(const struct device *dev)
 	struct flash_mspi_nor_data *dev_data = dev->data;
 	int rc;
 
-	if (dev_config->jedec_cmds->write_en.force_single) {
-		rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
-	} else {
-		rc = dev_cfg_apply(dev, &mspi_dev_cfg_122);
-	}
+	// if (dev_config->jedec_cmds->write_en.force_single) {
+	// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
+	// } else {
+	// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
+	// }
 
 	if (rc < 0) {
 		return rc;
@@ -296,17 +305,22 @@ static int api_write(const struct device *dev, off_t addr, const void *src,
 			break;
 		}
 
-		if (dev_config->jedec_cmds->page_program.force_single) {
-			rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
-		} else {
-			rc = dev_cfg_apply(dev, &mspi_dev_cfg_122);
-		}
+		// if (dev_config->jedec_cmds->page_program.force_single) {
+		// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
+		// } else {
+		// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
+		// }
 
 		if (rc < 0) {
 			return rc;
 		}
 
+#if (!XIP_RD_WR)
+#if DMA_RD_WR
+		flash_mspi_command_set_dma(dev, &dev_config->jedec_cmds->page_program);
+#else
 		flash_mspi_command_set(dev, &dev_config->jedec_cmds->page_program);
+#endif
 		dev_data->packet.address   = addr;
 		dev_data->packet.data_buf  = (uint8_t *)src;
 		dev_data->packet.num_bytes = to_write;
@@ -316,6 +330,10 @@ static int api_write(const struct device *dev, off_t addr, const void *src,
 			LOG_ERR("Page program xfer failed: %d", rc);
 			break;
 		}
+#else
+ 		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+		memcpy ((uint8_t *)(0x60000000 + addr), src, to_write);
+#endif
 
 		addr += to_write;
 		src   = (const uint8_t *)src + to_write;
@@ -363,12 +381,12 @@ static int api_erase(const struct device *dev, off_t addr, size_t size)
 			break;
 		}
 
-			/* Sector erase. */
-			if (dev_config->jedec_cmds->sector_erase.force_single) {
-				rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
-			} else {
-				rc = dev_cfg_apply(dev, &mspi_dev_cfg_122);
-			}
+			// /* Sector erase. */
+			// if (dev_config->jedec_cmds->sector_erase.force_single) {
+			// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
+			// } else {
+			// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
+			// }
 
 			if (rc < 0) {
 				return rc;
@@ -416,11 +434,11 @@ static int read_jedec_id(const struct device *dev, uint8_t *id)
 	struct flash_mspi_nor_data *dev_data = dev->data;
 	int rc;
 
-	if (dev_config->jedec_cmds->id.force_single) {
-		rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
-	} else {
-		rc = dev_cfg_apply(dev, &mspi_dev_cfg_122);
-	}
+	// if (dev_config->jedec_cmds->id.force_single) {
+	// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_init_cfg);
+	// } else {
+	// 	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
+	// }
 
 	if (rc < 0) {
 		return rc;
@@ -517,18 +535,27 @@ static int default_io_mode(const struct device *dev)
 	enum mspi_io_mode io_mode = dev_config->mspi_nor_cfg.io_mode;
 	uint8_t *buf = (uint8_t *)k_malloc(0x1000);
 	int rc = 0;
+	uint8_t *buf_wr = (uint8_t *)k_malloc(0x1000);
+
 	// rc = octal_enable_set(dev);
 	// uintptr_t reg_base = DEVICE_MMIO_GET(dev);
 
-	rc = dev_cfg_apply(dev, &mspi_dev_cfg_122);
+#if XIP_RD_WR
+	rc = dev_cfg_apply(dev, &mspi_dev_cfg_xip);
+#else
+	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
+#endif
 		// printf ("***[%s], [%s], [%04d], reg_base is %x\r\n", __FILE__, __func__, __LINE__, reg_base);
-
-	// rc = mspi_xip_config(dev_config->bus, &dev_config->mspi_id,
-	// 			&mspi_xip_cfg);
+	for (int n = 0; n < 32; n++) {
+		buf_wr[n] = rand() % 0x100;
+	}
+	rc = mspi_xip_config(dev_config->bus, &dev_config->mspi_id,
+				&mspi_xip_cfg);
 	// printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	// memcpy(buf, dev_data->flash_mmio, 32);
 	// memcpy(buf, 0x60000000, 32);
+	memcpy(buf, 0x60000000, 32);
 
 
 	// for (int i = 0; i < 32; i++) {
@@ -797,7 +824,7 @@ BUILD_ASSERT((FLASH_SIZE_INST(inst) % CONFIG_FLASH_MSPI_NOR_LAYOUT_PAGE_SIZE) ==
 				   / 1000,))					\
 		FLASH_PAGE_LAYOUT_DEFINE(inst)					\
 		.jedec_id = DT_INST_PROP(inst, jedec_id),			\
-		.jedec_cmds = &commands_1_2_2,					\
+		.jedec_cmds = FLASH_CMDS(inst),					\
 		.quirks = FLASH_QUIRKS(inst),					\
 		.dw15_qer = FLASH_DW15_QER(inst),				\
 	};									\
