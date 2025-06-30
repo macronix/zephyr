@@ -39,6 +39,25 @@ const struct mspi_dev_cfg mspi_dev_cfg_octal = {
 	.time_to_break = 0,
 };
 
+const struct mspi_dev_cfg mspi_dev_cfg_122 = {
+	.ce_num = 0,
+	.freq = 25000000,
+	.io_mode = MSPI_IO_MODE_DUAL_1_2_2,
+	.data_rate = MSPI_DATA_RATE_SINGLE,
+	.cpp = MSPI_CPP_MODE_0,
+	.endian = MSPI_XFER_BIG_ENDIAN,
+	.ce_polarity = MSPI_CE_ACTIVE_LOW,
+	.dqs_enable = false,
+	.rx_dummy = 8,
+	.tx_dummy = 0,
+	.read_cmd = 0xbb,
+	.write_cmd = 0x02,
+	.cmd_length = 1,
+	.addr_length = 3,
+	.mem_boundary = 0,
+	.time_to_break = 0,
+};
+
 const struct mspi_dev_cfg mspi_dev_cfg_xip = {
 	.ce_num = 0,
 	.freq = 25000000,
@@ -177,6 +196,75 @@ const struct flash_mspi_nor_cmds commands_single = {
 		.cmd = 0x72,
 		.cmd_length = 1,
 		.addr_length = 4,
+	},
+};
+
+const struct flash_mspi_nor_cmds commands_1_2_2 = {
+	.id = {
+		.dir = MSPI_RX,
+		.cmd = JESD216_CMD_READ_ID,
+		.cmd_length = 1,
+		.force_single = true,
+	},
+	.write_en = {
+		.dir = MSPI_TX,
+		.cmd = SPI_NOR_CMD_WREN,
+		.cmd_length = 1,
+		.force_single = true,
+	},
+	.read = {
+		.dir = MSPI_RX,
+		.cmd = 0xbb,
+		.cmd_length = 1,
+		.addr_length = 3,
+		.rx_dummy = 4,
+	},
+	.status = {
+		.dir = MSPI_RX,
+		.cmd = SPI_NOR_CMD_RDSR,
+		.cmd_length = 1,
+		.force_single = true,
+	},
+	.config = {
+		.dir = MSPI_RX,
+		.cmd = SPI_NOR_CMD_RDCR,
+		.cmd_length = 1,
+		.force_single = true,
+	},
+	.page_program = {
+		.dir  = MSPI_TX,
+		.cmd = SPI_NOR_CMD_PP,
+		.cmd_length = 1,
+		.addr_length = 3,
+		.force_single = true,
+	},
+	.sector_erase = {
+		.dir = MSPI_TX,
+		.cmd = SPI_NOR_CMD_SE,
+		.cmd_length = 1,
+		.addr_length = 3,
+		.force_single = true,
+	},
+	.chip_erase = {
+		.dir = MSPI_TX,
+		.cmd = SPI_NOR_CMD_CE,
+		.cmd_length = 1,
+		.force_single = true,
+	},
+	.sfdp = {
+		.dir = MSPI_RX,
+		.cmd = JESD216_CMD_READ_SFDP,
+		.cmd_length = 1,
+		.addr_length = 3,
+		.rx_dummy = 8,
+		.force_single = true,
+	},
+	.wrcr2 = {
+		.dir  = MSPI_TX,
+		.cmd = 0x72,
+		.cmd_length = 1,
+		.addr_length = 4,
+		.force_single = true,
 	},
 };
 

@@ -352,6 +352,8 @@ static uint32_t mspi_mxic_set_line(struct mspi_mxic_data *data, enum mspi_io_mod
 	cmd_bus = cmd_lines == 1 ? 0 : cmd_lines == 2 ? 1 : cmd_lines == 4 ? 2 : 3;
 	addr_bus = addr_lines == 1 ? 0 : addr_lines == 2 ? 1 : addr_lines == 4 ? 2 : 3;
 	data_bus = data_lines == 1 ? 0 : data_lines == 2 ? 1 : data_lines == 4 ? 2 : 3;
+	printf ("***[%s], [%s], [%04d], addr_bus is %x\r\n", __FILE__, __func__, __LINE__, addr_bus);
+	printf ("***[%s], [%s], [%04d], data_bus is %x\r\n", __FILE__, __func__, __LINE__, data_bus);
 
 	uint32_t conf = OP_CMD_BUSW(cmd_bus) | OP_CMD_DTR(cmd_ddr ? 1 : 0);
 
@@ -471,9 +473,9 @@ static int _api_dev_config(const struct device *dev,
 			return -EINVAL;
 		}
 #endif
-		uint8_t div = dev_config->clock_frequency / cfg->freq;
-		update_dev_ctrl(dev, DEV_CTRL_TYPE_MASK | DEV_CTRL_SCLK_SEL_MASK,
-				DEV_CTRL_TYPE_SPI | DEV_CTRL_SCLK_SEL_DIV(div));
+		// uint8_t div = dev_config->clock_frequency / cfg->freq;
+		// update_dev_ctrl(dev, DEV_CTRL_TYPE_MASK | DEV_CTRL_SCLK_SEL_MASK,
+		// 		DEV_CTRL_TYPE_SPI | DEV_CTRL_SCLK_SEL_DIV(div));
 	}
 
 	if (param_mask & MSPI_DEVICE_CONFIG_DQS) {
@@ -652,6 +654,7 @@ static int mspi_pio_transceive(const struct device *dev, const struct mspi_xfer 
 	/* Set up command  */
 	if (xfer->cmd_length) {
 		uint32_t cmd = swap32(xfer->packets->cmd,  xfer->cmd_length);
+		printf ("***[%s], [%s], [%04d], cmd is %x\r\n", __FILE__, __func__, __LINE__, cmd);
 
 		ret = mxic_uefc_io_mode_xfer(dev, (uint8_t *)&cmd, 0,
 					     xfer->cmd_length, 0);
