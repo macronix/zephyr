@@ -24,12 +24,6 @@
 			zephyr,memory-region = "OCM_HIGH";
 		};
 
-		// memory@0x60000000 {
-		// 	compatible = "zephyr,memory-region", "xlnx,zynq-ocm";
-		// 	reg = <0x60000000 DT_SIZE_K(256)>;
-		// 	zephyr,memory-region = "FLASH";
-		// };
-
 		arch_timer: timer@f8f00200 {
 			compatible = "arm,armv8-timer";
 			status = "okay";
@@ -110,10 +104,10 @@
 
 		spi0: spi@43a00000 {
 			#address-cells = <1>;
-			#size-cells = <1>;
+			#size-cells = <0>;
 			status = "okay";
 			reg = <0x43a00000 0x2000>;
-			compatible = "mspi-mxic-controller";
+			compatible = "mxicy,mspi-controller";
 		};
 
 		uart0: uart@e0000000 {

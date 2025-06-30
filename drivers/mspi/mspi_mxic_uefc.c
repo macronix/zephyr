@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#define DT_DRV_COMPAT mspi_mxic_controller
+#define DT_DRV_COMPAT mxicy_mspi_controller
 
 #include "mspi_mxic_uefc.h"
-LOG_MODULE_REGISTER(mspi_mxic_controller);
+LOG_MODULE_REGISTER(mxicy_mspi_controller);
 
 static uint32_t mxic_uefc_conf(const struct device *dev);
 static int mxic_uefc_hc_setup(const struct device *dev);
@@ -20,11 +20,14 @@ static int mspi_mxic_config(const struct mspi_dt_spec *spec);
 static int _api_dev_config(const struct device *dev,
 			   const enum mspi_dev_cfg_mask param_mask,
 			   const struct mspi_dev_cfg *cfg);
+
+#define CE_PORTS_LEN DT_INST_PROP_LEN(0, ce_ports)
 struct mspi_mxic_config {
 	DEVICE_MMIO_ROM;
 	uint32_t clock_frequency;
+	uint8_t ce_ports_len;
+	uint8_t ce_ports[CE_PORTS_LEN];
 };
-
 
 /* Register access helpers. */
 #define DEFINE_MM_REG_RD_WR(reg, off) \
@@ -57,6 +60,7 @@ DEFINE_MM_REG_RD_WR(map_wr_ctrl,		0xC8)
 DEFINE_MM_REG_RD_WR(map_cmd,		0xCC)
 DEFINE_MM_REG_RD_WR(sdma_addr,		0x2C)
 DEFINE_MM_REG_RD_WR(sdma_cnt,		0x28)
+DEFINE_MM_REG_RD_WR(cap_1,		0x58)
 
 #if defined(CONFIG_MSPI_XIP)
 struct xip_params {
@@ -103,16 +107,17 @@ static int mxic_uefc_channel_config(const struct device *dev, int ch_type, int p
 {
 	uint16_t ncsbs;
 	uint8_t dual_ch;
+	uint32_t reg_cap1;
 
-	reg_cap1 = MXIC_RD32(CAP_1);
+	reg_cap1 = read_cap_1(dev);
 	ncsbs = (reg_cap1 & CAP_1_CSB_NUM_MASK) >> CAP_1_CSB_NUM_OFS;
 
 	while (ncsbs--) {
-		UPDATE_WRITE(HC_CTRL_CH_LUN_PORT_MASK, HC_CTRL_CH_LUN_PORT(A, 0, ncsbs), HC_CTRL);
-		MXIC_WR32(UEFC_TOP_MAP_ADDR, TOP_MAP_ADDR);
+		update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, HC_CTRL_CH_LUN_PORT(A, 0, ncsbs));
+		write_top_map_addr(dev, UEFC_TOP_MAP_ADDR);
 		if (dual_ch) {
-			UPDATE_WRITE(HC_CTRL_CH_LUN_PORT_MASK, HC_CTRL_CH_LUN_PORT(B, 0, ncsbs), HC_CTRL);
-			MXIC_WR32(UEFC_TOP_MAP_ADDR, TOP_MAP_ADDR);
+			update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, HC_CTRL_CH_LUN_PORT(B, 0, ncsbs));
+			write_top_map_addr(dev, UEFC_TOP_MAP_ADDR);
 		}
 	}
 
@@ -135,12 +140,6 @@ static int mxic_uefc_init(const struct device *dev)
 	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
 
 	write_base_map_addr(dev, UEFC_BASE_MAP_ADDR);
-
-	update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, HC_CTRL_CH_LUN_PORT(A, 0, 0));
-	write_top_map_addr(dev, UEFC_TOP_MAP_ADDR);
-
-	update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, HC_CTRL_CH_LUN_PORT(B, 0, 0));
-	write_top_map_addr(dev, UEFC_TOP_MAP_ADDR);
 
 	ret = mxic_uefc_channel_config(dev, 0, 0);
 	if (0 != ret) {
@@ -354,7 +353,7 @@ static uint32_t mspi_mxic_set_line(struct mspi_mxic_data *data, enum mspi_io_mod
 	addr_bus = addr_lines == 1 ? 0 : addr_lines == 2 ? 1 : addr_lines == 4 ? 2 : 3;
 	data_bus = data_lines == 1 ? 0 : data_lines == 2 ? 1 : data_lines == 4 ? 2 : 3;
 
-	uint32_t conf = OP_CMD_BUSW(cmd_bus) | OP_CMD_DTR(true == cmd_ddr ? 1 : 0);
+	uint32_t conf = OP_CMD_BUSW(cmd_bus) | OP_CMD_DTR(cmd_ddr ? 1 : 0);
 
 	conf |= OP_ADDR_BUSW(addr_bus) |
 		OP_ADDR_DTR(addr_ddr ? 1 : 0);
@@ -638,6 +637,16 @@ static int mspi_pio_transceive(const struct device *dev, const struct mspi_xfer 
 
 	mspi_pio_prepare(dev, xfer);
 
+	// if (dev_data->dev_id->ce.port) {
+	// 	rc = gpio_pin_set_dt(&dev_data->dev_id->ce, 1);
+	// 	if (rc < 0) {
+	// 		LOG_ERR("Failed to activate CE line (%d)", rc);
+	// 		return rc;
+	// 	}
+
+	// 	update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, HC_CTRL_CH_LUN_PORT(A, 0, ncsbs));
+	// }
+
 	mxic_uefc_cs_start(dev);
 
 	/* Set up command  */
@@ -832,10 +841,11 @@ static struct mspi_driver_api mspi_mxic_driver_api = {
 };
 
 static const struct mspi_mxic_config mspi_mxic_config_0 = 
-	{
-		DEVICE_MMIO_ROM_INIT(DT_DRV_INST(0)),
-		.clock_frequency = DT_INST_PROP(0, clock_frequency),
-	};
+{
+	DEVICE_MMIO_ROM_INIT(DT_DRV_INST(0)),
+	.clock_frequency = DT_INST_PROP(0, clock_frequency),
+	.ce_ports_len = DT_INST_PROP_LEN(0, ce_ports),
+};
 
 static struct mspi_mxic_data mspi_mxic_data_0;
 

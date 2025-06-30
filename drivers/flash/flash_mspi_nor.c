@@ -536,22 +536,22 @@ static int default_io_mode(const struct device *dev)
 	uint8_t *buf = (uint8_t *)k_malloc(0x1000);
 	int rc = 0;
 	rc = octal_enable_set(dev);
-	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
+	// uintptr_t reg_base = DEVICE_MMIO_GET(dev);
 
-	dev_cfg_apply(dev, &mspi_dev_cfg_octal);
-	printf ("***[%s], [%s], [%04d], reg_base is %x\r\n", __FILE__, __func__, __LINE__, reg_base);
+	rc = dev_cfg_apply(dev, &dev_config->mspi_nor_cfg);
+		// printf ("***[%s], [%s], [%04d], reg_base is %x\r\n", __FILE__, __func__, __LINE__, reg_base);
 
-	rc = mspi_xip_config(dev_config->bus, &dev_config->mspi_id,
-				&mspi_xip_cfg);
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+	// rc = mspi_xip_config(dev_config->bus, &dev_config->mspi_id,
+	// 			&mspi_xip_cfg);
+	// printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	// memcpy(buf, dev_data->flash_mmio, 32);
-	memcpy(buf, 0x60000000, 32);
+	// memcpy(buf, 0x60000000, 32);
 
 
-	for (int i = 0; i < 32; i++) {
-		printf ("***[%s], [%s], [%04d], buf is %x\r\n", __FILE__, __func__, __LINE__, buf[i]);
-	}
+	// for (int i = 0; i < 32; i++) {
+	// 	printf ("***[%s], [%s], [%04d], buf is %x\r\n", __FILE__, __func__, __LINE__, buf[i]);
+	// }
 
 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 

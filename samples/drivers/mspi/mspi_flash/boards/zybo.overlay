@@ -7,10 +7,11 @@
  &spi0{
 	status = "okay";
 	clock-frequency = <50000000>;
+	ce-ports = [01 02];
 	zephyr,deferred-init;
 	mx25uw51245g: mx25uw51245g@0 {
 		compatible = "jedec,mspi-nor";
-		reg = <0x60000000 0x1000>;
+		reg = <0>;
 		jedec-id = [c2 81 3A];
 		size = <67108864>;
 		t-enter-dpd = <10000>;

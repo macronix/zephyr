@@ -17,7 +17,7 @@ properties:
     const: 1
   "#size-cells":
     required: true
-    const: 1
+    const: 0
 
   op-mode:
     type: string
