@@ -40,8 +40,9 @@ int single_sector_test(const struct device *flash_dev)
 	volatile uint8_t *buf_rd = (uint8_t * )malloc (SPI_FLASH_SECTOR_SIZE);
 
 	memset (erased, 0xff, SPI_FLASH_SECTOR_SIZE);
+	memset (buf, 0x00, 32);
 	for (int n = 0; n < SPI_FLASH_SECTOR_SIZE; n++) {
-		buf_wr[n] = rand() % 0x100;
+		buf_wr[n] = rand() % 0x30;
 	}
 
 	printf("\nPerform test on single sector");
@@ -56,6 +57,16 @@ int single_sector_test(const struct device *flash_dev)
 	/* Full flash erase if SPI_FLASH_TEST_REGION_OFFSET = 0 and
 	 * SPI_FLASH_SECTOR_SIZE = flash size
 	 */
+
+
+	rc = flash_read(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, buf, len);
+	if (rc != 0) {
+		printf("Flash read failed! %d\n", rc);
+		return 1;
+	}
+	for (int i = 0; i < 32; i++) {
+		printf ("***[%s], [%s], [%04d], buf_rd is %x\r\n", __FILE__, __func__, __LINE__, buf[i]);
+	}
 	rc = flash_erase(flash_dev, SPI_FLASH_TEST_REGION_OFFSET,
 			 FLASH_ERASE_SECTOR_SIZE);
 	if (rc != 0) {
@@ -63,49 +74,55 @@ int single_sector_test(const struct device *flash_dev)
 	} else {
 		printf("Flash erase succeeded!\n");
 	}
-
-	printf("\nTest 2: Flash write\n");
-
-	printf("Attempting to write %zu bytes\n", len);
-	rc = flash_write(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, buf_wr, len);
-	if (rc != 0) {
-		printf("Flash write failed! %d\n", rc);
-		return 1;
-	}
-
-	memset(buf, 0, len);
-	memset(buf_rd, 0, len);
-	memset(dma_buf, 0, len);
-
-	printf ("***[%s], [%s], [%04d], buf_rd is %x\r\n", __FILE__, __func__, __LINE__, buf_rd);
-	rc = flash_read(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, dma_buf, len);
+		rc = flash_read(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, buf, len);
 	if (rc != 0) {
 		printf("Flash read failed! %d\n", rc);
 		return 1;
 	}
-
-	if (memcmp(buf_wr, buf_rd, len) == 0) {
-		printf("Data read matches data written. Good!!\n");
-	} else {
-		const uint8_t *wp = buf_wr;
-		const uint8_t *rp = dma_buf;
-		const uint8_t *rpe = rp + len;
-
-		printf("Data read does not match data written!!\n");
-		while (rp < rpe) {
-			printf("%08x wrote %02x read %02x %s\n",
-			       (uint32_t)(SPI_FLASH_TEST_REGION_OFFSET + (rp - dma_buf)),
-			       *wp, *rp, (*rp == *wp) ? "match" : "MISMATCH");
-			++rp;
-			++wp;
-		}
-
-	}
-
 	for (int i = 0; i < 32; i++) {
-printf ("***[%s], [%s], [%04d], buf_rd is %x\r\n", __FILE__, __func__, __LINE__, dma_buf[i]);
-
+		printf ("***[%s], [%s], [%04d], buf_rd is %x\r\n", __FILE__, __func__, __LINE__, buf[i]);
 	}
+	printf("\nTest 2: Flash write\n");
+
+	printf("Attempting to write %zu bytes\n", len);
+// 	rc = flash_write(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, buf_wr, len);
+// 	if (rc != 0) {
+// 		printf("Flash write failed! %d\n", rc);
+// 		return 1;
+// 	}
+
+// 	memset(buf, 0, len);
+// 	memset(buf_rd, 0, len);
+// 	memset(dma_buf, 0, len);
+
+// 	rc = flash_read(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, dma_buf, len);
+// 	if (rc != 0) {
+// 		printf("Flash read failed! %d\n", rc);
+// 		return 1;
+// 	}
+
+// 	if (memcmp(buf_wr, buf_rd, len) == 0) {
+// 		printf("Data read matches data written. Good!!\n");
+// 	} else {
+// 		const uint8_t *wp = buf_wr;
+// 		const uint8_t *rp = dma_buf;
+// 		const uint8_t *rpe = rp + len;
+
+// 		printf("Data read does not match data written!!\n");
+// 		while (rp < rpe) {
+// 			printf("%08x wrote %02x read %02x %s\n",
+// 			       (uint32_t)(SPI_FLASH_TEST_REGION_OFFSET + (rp - dma_buf)),
+// 			       *wp, *rp, (*rp == *wp) ? "match" : "MISMATCH");
+// 			++rp;
+// 			++wp;
+// 		}
+
+// 	}
+
+// 	for (int i = 0; i < 32; i++) {
+// printf ("***[%s], [%s], [%04d], buf_rd is %x\r\n", __FILE__, __func__, __LINE__, dma_buf[i]);
+
+// 	}
 	return rc;
 }
 
@@ -269,9 +286,9 @@ printf ("***[%s], [%s], [%04d], sctlr is %x\r\n", __FILE__, __func__, __LINE__, 
 
 // 	printf("\n%s SPI flash testing\n", flash_dev->name);
 	printf("==========================\n");
-	// if (single_sector_test(flash_dev)) {
-	// 	return 1;
-	// }
+	if (single_sector_test(flash_dev)) {
+		return 1;
+	}
 // #if defined SPI_FLASH_MULTI_SECTOR_TEST
 // 	if (multi_sector_test(flash_dev)) {
 // 		return 1;

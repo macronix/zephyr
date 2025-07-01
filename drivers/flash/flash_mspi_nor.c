@@ -331,8 +331,10 @@ static int api_write(const struct device *dev, off_t addr, const void *src,
 			break;
 		}
 #else
- 		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+ 		printf ("***[%s], [%s], [%04d], addr is %x\r\n", __FILE__, __func__, __LINE__, addr);
 		memcpy ((uint8_t *)(0x60000000 + addr), src, to_write);
+		printf ("***[%s], [%s], [%04d], to_write is %x\r\n", __FILE__, __func__, __LINE__, to_write);
+
 #endif
 
 		addr += to_write;
@@ -536,7 +538,7 @@ static int default_io_mode(const struct device *dev)
 	uint8_t *buf = (uint8_t *)k_malloc(0x1000);
 	int rc = 0;
 	uint8_t *buf_wr = (uint8_t *)k_malloc(0x1000);
-
+memset (buf , 0x00, 32);
 	// rc = octal_enable_set(dev);
 	// uintptr_t reg_base = DEVICE_MMIO_GET(dev);
 
@@ -547,20 +549,41 @@ static int default_io_mode(const struct device *dev)
 #endif
 		// printf ("***[%s], [%s], [%04d], reg_base is %x\r\n", __FILE__, __func__, __LINE__, reg_base);
 	for (int n = 0; n < 32; n++) {
-		buf_wr[n] = rand() % 0x100;
+		buf_wr[n] = rand() % 0x40;
 	}
-	rc = mspi_xip_config(dev_config->bus, &dev_config->mspi_id,
-				&mspi_xip_cfg);
+
+	printf ("***[%s], [%s], [%04d], value is %x\r\n", __FILE__, __func__, __LINE__, *((uint32_t *)0x43a000c8));
+
 	// printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	// memcpy(buf, dev_data->flash_mmio, 32);
 	// memcpy(buf, 0x60000000, 32);
-	memcpy(buf, 0x60000000, 32);
+	flash_mspi_command_set(dev, &commands_single.write_en);
 
+	// There is no need to define data_buf and num_bytes, only command code valid.
+	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+			     &dev_data->xfer);
+	if (rc < 0) {
+		LOG_ERR("Failed to set write enable: %d", rc);
+		return rc;
+	}
+	rc = mspi_xip_config(dev_config->bus, &dev_config->mspi_id,
+				&mspi_xip_cfg);
+		// memcpy(buf, 0x60000000, 32);
 
-	// for (int i = 0; i < 32; i++) {
-	// 	printf ("***[%s], [%s], [%04d], buf is %x\r\n", __FILE__, __func__, __LINE__, buf[i]);
-	// }
+	for (int i = 0; i < 32; i++) {
+		printf ("***[%s], [%s], [%04d], buf_wr is %x\r\n", __FILE__, __func__, __LINE__, buf_wr[i]);
+	}
+	memcpy(0x60000000, buf_wr, 32);
+
+	// rc = mspi_xip_config(dev_config->bus, &dev_config->mspi_id,
+	// 			&mspi_xip_cfg);
+	// memcpy(buf, 0x60000050, 32);
+		printf ("***[%s], [%s], [%04d], value is %x\r\n", __FILE__, __func__, __LINE__, *((uint32_t *)0x43a000c4));
+
+	for (int i = 0; i < 32; i++) {
+		printf ("***[%s], [%s], [%04d], buf is %x\r\n", __FILE__, __func__, __LINE__, buf[i]);
+	}
 
 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
