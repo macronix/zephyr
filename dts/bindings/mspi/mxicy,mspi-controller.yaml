@@ -43,3 +43,14 @@ properties:
       chip select controller ce-port 0. Similarly, "mspi-device@1" has CE GPIO
       controller ce-port 1. Additional devices can be configured in the same way.
       This controller supports up to 256 devices.
+  rx-ss-a:
+    required: true
+    type: int
+    description: |
+      Ratio Of CLK_RX_A_I Frequency And CLK_SS_I Frequency.
+
+  rx-ss-b:
+    required: true
+    type: int
+    description: |
+      Ratio Of CLK_RX_B_I Frequency And CLK_SS_I Frequency.

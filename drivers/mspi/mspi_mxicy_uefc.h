@@ -26,8 +26,8 @@ enum HC_XFER_MODE_TYPE {
 #define CHIP_SELECT_COUNT               3u
 #define SPI_WORD_SIZE                   8u
 #define SPI_WR_RD_CHUNK_SIZE_MAX        16u
-#define MXIC_UEFC_CMD_LENGTH   2
-#define MXIC_UEFC_ADDR_LENGTH   4
+#define MXICY_UEFC_CMD_LENGTH   2
+#define MXICY_UEFC_ADDR_LENGTH   4
 
 #define BIT(x) (1U << (x))
 /* Host Controller Register */
@@ -38,6 +38,7 @@ enum HC_XFER_MODE_TYPE {
 #define HC_CTRL_PARALLEL_0			BIT(26)
 #define HC_CTRL_DATA_ORDER			BIT(25) //OctaFlash, OctaRAM
 #define HC_CTRL_SIO_SHIFTER(x)		(((x) & 0x3) << 23)
+#define HC_CTRL_SIO_SHIFTER_MASK	HC_CTRL_SIO_SHIFTER(3)
 #define HC_CTRL_EX_SER_B			BIT(22)
 #define HC_CTRL_EX_SER_A			BIT(21)
 #define HC_CTRL_ASSIMI_BYTE_B(x)	(((x) & 0x3) << 19)
@@ -489,10 +490,14 @@ enum HC_XFER_MODE_TYPE {
 /* Sample Point Adjust Register */
 #define SAMPLE_ADJ 			0xEC
 #define SAMPLE_ADJ_DQS_IDLY_DOPI(x)	(((x) & 0xff) << 27)
+#define SAMPLE_ADJ_DQS_IDLY_DOPI_MASK	SAMPLE_ADJ_DQS_IDLY_DOPI(0xff)
 #define SAMPLE_ADJ_DQS_IDLY_SOPI(x)	(((x) & 0xff) << 19)
 #define SAMPLE_ADJ_DQS_ODLY(x)		(((x) & 0xff) << 8)
 #define SAMPLE_ADJ_POINT_SEL_DDR(x)	(((x) & 0x7) << 3)
+#define SAMPLE_ADJ_POINT_SEL_DDR_MASK SAMPLE_ADJ_POINT_SEL_DDR(0x7)
 #define SAMPLE_ADJ_POINT_SEL_SDR(x)	(((x) & 0x7) << 0)
+#define SAMPLE_ADJ_POINT_SEL_SDR_MASK SAMPLE_ADJ_POINT_SEL_SDR(0x7)
+
 
 /* SIO Input Delay 1 Register */
 #define SIO_IDLY_1 0xF0
@@ -571,10 +576,10 @@ static void reg_update(const struct device *dev, uint32_t _mask, uint32_t data, 
 /* Default selection: Channel A, lun 0, Port 0 */
 #define UEFC_CH_LUN_PORT 		HC_CTRL_CH_LUN_PORT(A, 0, 0)
 
-#define MXIC_RD32(_reg) \
+#define MXICY_RD32(_reg) \
 	(*(volatile uint32_t *)(_reg))
 
-#define MXIC_WR32(_val, _reg) \
+#define MXICY_WR32(_val, _reg) \
 	((*(uint32_t *)((_reg))) = (_val))
 
 int mxic_wr32 (uint32_t _val,  uint32_t *_reg) {
@@ -599,7 +604,7 @@ uint32_t swap32(uint32_t val, uint8_t nbytes)
 }
 
 #define UPDATE_WRITE(_mask, _value, _reg) \
-	MXIC_WR32(((_value) | (MXIC_RD32(_reg) & ~(_mask))), (_reg))
+	MXICY_WR32(((_value) | (MXICY_RD32(_reg) & ~(_mask))), (_reg))
 
 #define MSPI_MAX_FREQ        48000000
 #define MSPI_MAX_DEVICE      2
@@ -607,14 +612,20 @@ uint32_t swap32(uint32_t val, uint8_t nbytes)
 #define PWRCTRL_MAX_WAIT_US  5
 #define MSPI_BUSY            BIT(2)
 
-struct mspi_context {
-	const struct mspi_dev_id      *owner;
+struct mspi_mxic_timing_cfg {
+	uint8_t ui8SioShifter;
+	uint8_t ui8DQSDdrDelay;
+	uint8_t ui8DdrDelay;
+	uint8_t ui8SdrDelay;
+	uint32_t ui32SioLowDelay;
+	uint32_t ui32SioHighDelay;
+};
 
-	struct mspi_xfer              xfer;
-
-	mspi_callback_handler_t       callback;
-	struct mspi_callback_context  *callback_ctx;
-	bool asynchronous;
-
-	struct k_sem lock;
+enum mspi_mxic_timing_param {
+	MSPI_MXICY_SET_SIO_SHIFTER       = BIT(0),
+	MSPI_MXICY_SET_DQS_DDR_DELAY     = BIT(1),
+	MSPI_MXICY_SET_DDR_DELAY         = BIT(2),
+	MSPI_MXICY_SET_SDR_DELAY         = BIT(3),
+	MSPI_MXICY_SET_SIO_LOW_DELAY     = BIT(4),
+	MSPI_MXICY_SET_SIO_HIGH_DELAY    = BIT(5),
 };
