@@ -107,6 +107,8 @@
 			#size-cells = <0>;
 			status = "okay";
 			reg = <0x43a00000 0x2000>;
+			rx-ss-a = <1>;
+			rx-ss-b = <1>;
 			compatible = "mxicy,mspi-controller";
 		};
 

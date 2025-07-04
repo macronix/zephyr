@@ -29,7 +29,6 @@ enum HC_XFER_MODE_TYPE {
 #define MXICY_UEFC_CMD_LENGTH   2
 #define MXICY_UEFC_ADDR_LENGTH   4
 
-#define BIT(x) (1U << (x))
 /* Host Controller Register */
 #define HC_CTRL						0x00
 #define HC_CTRL_RQE_EN				BIT(31)
@@ -38,7 +37,7 @@ enum HC_XFER_MODE_TYPE {
 #define HC_CTRL_PARALLEL_0			BIT(26)
 #define HC_CTRL_DATA_ORDER			BIT(25) //OctaFlash, OctaRAM
 #define HC_CTRL_SIO_SHIFTER(x)		(((x) & 0x3) << 23)
-#define HC_CTRL_SIO_SHIFTER_MASK	HC_CTRL_SIO_SHIFTER(3)
+#define HC_CTRL_SIO_SHIFTER_MASK    GENMASK(23, 24)
 #define HC_CTRL_EX_SER_B			BIT(22)
 #define HC_CTRL_EX_SER_A			BIT(21)
 #define HC_CTRL_ASSIMI_BYTE_B(x)	(((x) & 0x3) << 19)
@@ -51,7 +50,7 @@ enum HC_XFER_MODE_TYPE {
 #define HC_CTRL_CH_SEL_B			BIT(11)
 #define HC_CTRL_CH_SEL_A			0
 #define HC_CTRL_CH_MASK				BIT(11)
-#define HC_CTRL_LUN_SEL(x)			(((x) & 0x7) << 8) //NAND
+#define HC_CTRL_LUN_SEL(x)			(((x) & 0x7) << 8)
 #define HC_CTRL_LUN_MASK			HC_CTRL_LUN_SEL(0x7)
 #define HC_CTRL_PORT_SEL(x)			(((x) & 0xff) << 0)
 #define HC_CTRL_PORT_MASK			(HC_CTRL_PORT_SEL(0xff))
@@ -69,14 +68,14 @@ enum HC_XFER_MODE_TYPE {
 #define INT_STS_AC_RDY			BIT(28)
 #define INT_STS_ERR_INT			BIT(15)
 #define INT_STS_CQE_INT			BIT(14)
-#define INT_STS_DMA_TFR_CMPLT		BIT(7)
-#define INT_STS_DMA_INT			BIT(6)
+#define INT_STS_DMA_TFR_CMPLT_BIT		BIT(7)
+#define INT_STS_DMA_INT_BIT			BIT(6)
 #define INT_STS_BUF_RD_RDY		BIT(5)
 #define INT_STS_BUF_WR_RDY		BIT(4)
 #define INT_STS_ALL_CLR 		(INT_STS_AC_RDY | \
 					INT_STS_ERR_INT | \
-					INT_STS_DMA_TFR_CMPLT | \
-					INT_STS_DMA_INT)
+					INT_STS_DMA_TFR_CMPLT_BIT | \
+					INT_STS_DMA_INT_BIT)
 
 /* Error Interrupt Status Register */
 #define ERR_INT_STS			0x08
@@ -105,8 +104,8 @@ enum HC_XFER_MODE_TYPE {
 #define INT_STS_EN_CACHE_RDY		BIT(29)
 #define INT_STS_EN_AC_RDY		BIT(28)
 #define INT_STS_EN_ERR_INT		BIT(15)
-#define INT_STS_EN_DMA_TFR_CMPLT	BIT(7)
-#define INT_STS_DMA					BIT(6)
+#define INT_STS_EN_DMA_TFR_CMPLT_BIT	BIT(7)
+#define INT_STS_DMA_BIT					BIT(6)
 #define INT_STS_EN_BUF_RD_RDY		BIT(5)
 #define INT_STS_EN_BUF_WR_RDY		BIT(4)
 #define INT_STS_EN_DMA_INT		BIT(3)
@@ -115,8 +114,8 @@ enum HC_XFER_MODE_TYPE {
 #define INT_STS_EN_CMD_CMPLT		BIT(0)
 #define INT_STS_EN_ALL_EN		(INT_STS_EN_AC_RDY | \
 					INT_STS_EN_ERR_INT | \
-					INT_STS_EN_DMA_TFR_CMPLT | \
-					INT_STS_EN_DMA_INT)
+					INT_STS_EN_DMA_TFR_CMPLT_BIT | \
+					INT_STS_DMA_BIT)
 
 /* Error Interrupt Status Enable Register */
 #define ERR_INT_STS_EN			0x10
@@ -190,9 +189,9 @@ enum HC_XFER_MODE_TYPE {
 #define TFR_MODE_PREAM_WITH		BIT(28)
 #define TFR_MODE_CSB_DONT_CARE		BIT(27)
 #define TFR_MODE_CMD_CNT    		BIT(17)
-#define TFR_MODE_DATA_DTR    		BIT(16)
-#define TFR_MODE_ADDR_DTR    		BIT(13)
-#define TFR_MODE_CMD_DTR    		BIT(10)
+#define TFR_MODE_DATA_DTR_BIT   		BIT(16)
+#define TFR_MODE_ADDR_DTR_BIT   		BIT(13)
+#define TFR_MODE_CMD_DTR_BIT    		BIT(10)
 
 #define TFR_MODE_ADDR_CNT_MASK  	OP_ADDR_CNT(0x7)
 
@@ -206,13 +205,11 @@ enum HC_XFER_MODE_TYPE {
 	#define OP_DMY_CNT(_len, _dtr, _bw) (((_len * (_dtr + 1)) / (8 / (_bw))) << 21)
 
 	#define OP_DMY(x)		(((x) & 0x3F) << 21)
-	#define TFR_MODE_DMY_MASK			(OP_DMY(0x3f))
-	#define TFR_MODE_DATA_BUSW_MASK			(OP_DATA_BUSW(0x3))
-	#define TFR_MODE_CMD_BUSW_MASK			(OP_CMD_BUSW(0x3))
-	#define TFR_MODE_ADDR_BUSW_MASK			(OP_ADDR_BUSW(0x3))
-
-	#define TFR_MODE_ADDR_CNT_MASK			(OP_ADDR_CNT(0x7))
-
+	#define TFR_MODE_DMY_MASK			    GENMASK(21, 26)
+	#define TFR_MODE_DATA_BUSW_MASK			GENMASK(14, 15)
+	#define TFR_MODE_CMD_BUSW_MASK			GENMASK(8, 9)
+	#define TFR_MODE_ADDR_BUSW_MASK			GENMASK(11, 12)
+	#define TFR_MODE_ADDR_CNT_MASK			GENMASK(18, 19)
 
 	#define OP_ADDR_CNT(x)		(((x) & 0x7) << 18)
 	#define OP_CMD_CNT(x)		(((x) - 1) << 17)
@@ -222,15 +219,15 @@ enum HC_XFER_MODE_TYPE {
 	#define OP_ADDR_DTR(x)		(((x) & 0x1) << 13)
 	#define OP_CMD_BUSW(x)		(((x) & 0x3) << 8)
 	#define OP_CMD_DTR(x)		(((x) & 1) << 10)
-	#define OP_DD_RD		BIT(4)
+	#define OP_DD_RD_BIT		BIT(4)
 
 /* Transfer Control Register */
 #define TFR_CTRL			0x20
-#define TFR_CTRL_DEV_DIS		BIT(18)
-#define TFR_CTRL_IO_END			BIT(16)
-#define TFR_CTRL_DEV_ACT		BIT(2)
-#define TFR_CTRL_HC_ACT			BIT(1)
-#define TFR_CTRL_IO_START		BIT(0)
+#define TFR_CTRL_DEV_DIS_BIT		BIT(18)
+#define TFR_CTRL_IO_END_BIT			BIT(16)
+#define TFR_CTRL_DEV_ACT_BIT		BIT(2)
+#define TFR_CTRL_HC_ACT_BIT			BIT(1)
+#define TFR_CTRL_IO_START_BIT		BIT(0)
 
 /* Present State Register */
 #define PRES_STS			0x24
@@ -582,10 +579,6 @@ static void reg_update(const struct device *dev, uint32_t _mask, uint32_t data, 
 #define MXICY_WR32(_val, _reg) \
 	((*(uint32_t *)((_reg))) = (_val))
 
-int mxic_wr32 (uint32_t _val,  uint32_t *_reg) {
-	*_reg= (_val);
-}
-
 uint32_t swap32(uint32_t val, uint8_t nbytes)
 {
 	uint32_t ret = 0;
@@ -612,7 +605,7 @@ uint32_t swap32(uint32_t val, uint8_t nbytes)
 #define PWRCTRL_MAX_WAIT_US  5
 #define MSPI_BUSY            BIT(2)
 
-struct mspi_mxic_timing_cfg {
+struct mspi_mxicy_timing_cfg {
 	uint8_t ui8SioShifter;
 	uint8_t ui8DQSDdrDelay;
 	uint8_t ui8DdrDelay;
@@ -621,7 +614,7 @@ struct mspi_mxic_timing_cfg {
 	uint32_t ui32SioHighDelay;
 };
 
-enum mspi_mxic_timing_param {
+enum mspi_mxicy_timing_param {
 	MSPI_MXICY_SET_SIO_SHIFTER       = BIT(0),
 	MSPI_MXICY_SET_DQS_DDR_DELAY     = BIT(1),
 	MSPI_MXICY_SET_DDR_DELAY         = BIT(2),
