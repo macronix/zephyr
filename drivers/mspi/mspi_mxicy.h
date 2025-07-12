@@ -37,7 +37,7 @@ enum HC_XFER_MODE_TYPE {
 #define HC_CTRL_PARALLEL_0			BIT(26)
 #define HC_CTRL_DATA_ORDER			BIT(25) //OctaFlash, OctaRAM
 #define HC_CTRL_SIO_SHIFTER(x)		(((x) & 0x3) << 23)
-#define HC_CTRL_SIO_SHIFTER_MASK    GENMASK(23, 24)
+#define HC_CTRL_SIO_SHIFTER_MASK    GENMASK(24, 23)
 #define HC_CTRL_EX_SER_B			BIT(22)
 #define HC_CTRL_EX_SER_A			BIT(21)
 #define HC_CTRL_ASSIMI_BYTE_B(x)	(((x) & 0x3) << 19)
@@ -69,7 +69,9 @@ enum HC_XFER_MODE_TYPE {
 #define INT_STS_ERR_INT			BIT(15)
 #define INT_STS_CQE_INT			BIT(14)
 #define INT_STS_DMA_TFR_CMPLT_BIT		BIT(7)
+
 #define INT_STS_DMA_INT_BIT			BIT(6)
+
 #define INT_STS_BUF_RD_RDY		BIT(5)
 #define INT_STS_BUF_WR_RDY		BIT(4)
 #define INT_STS_ALL_CLR 		(INT_STS_AC_RDY | \
@@ -193,23 +195,23 @@ enum HC_XFER_MODE_TYPE {
 #define TFR_MODE_ADDR_DTR_BIT   		BIT(13)
 #define TFR_MODE_CMD_DTR_BIT    		BIT(10)
 
-#define TFR_MODE_ADDR_CNT_MASK  	OP_ADDR_CNT(0x7)
+#define TFR_MODE_ADDR_CNT_MASK_TEST  	OP_ADDR_CNT(0x7)
 
 
 #define TFR_MODE_SIO_1X_RD_BUS(x)	(((x) & 0x3) << 6)
 #define TFR_MODE_MULT_BLK		BIT(5)
 #define TFR_MODE_AUTO_CMD(x)		(((x) & 0x3) << 2)
 #define TFR_MODE_CNT_EN			BIT(1)
-#define TFR_MODE_DMA_EN			BIT(0)
+#define TFR_MODE_DMA_EN_BIT			BIT(0)
 /* share with MAPRD, MAPWR */
 	#define OP_DMY_CNT(_len, _dtr, _bw) (((_len * (_dtr + 1)) / (8 / (_bw))) << 21)
 
 	#define OP_DMY(x)		(((x) & 0x3F) << 21)
-	#define TFR_MODE_DMY_MASK			    GENMASK(21, 26)
-	#define TFR_MODE_DATA_BUSW_MASK			GENMASK(14, 15)
-	#define TFR_MODE_CMD_BUSW_MASK			GENMASK(8, 9)
-	#define TFR_MODE_ADDR_BUSW_MASK			GENMASK(11, 12)
-	#define TFR_MODE_ADDR_CNT_MASK			GENMASK(18, 19)
+	#define TFR_MODE_DMY_MASK			    GENMASK(26, 21)
+	#define TFR_MODE_DATA_BUSW_MASK			GENMASK(15, 14)
+	#define TFR_MODE_CMD_BUSW_MASK			GENMASK(9, 8)
+	#define TFR_MODE_ADDR_BUSW_MASK			GENMASK(12, 11)
+	#define TFR_MODE_ADDR_CNT_MASK			GENMASK(19, 18)
 
 	#define OP_ADDR_CNT(x)		(((x) & 0x7) << 18)
 	#define OP_CMD_CNT(x)		(((x) - 1) << 17)
@@ -429,7 +431,8 @@ enum HC_XFER_MODE_TYPE {
 #define MAP_WR_CTRL			0xC8
 
 /* Mapping Command Register */
-#define MAP_CMD			0xCC    
+#define MAP_CMD			   0xCC    
+#define MAP_WR_CMD_SHIFT	    16
 
 /* Top Mapping Address Register */
 #define TOP_MAP_ADDR			0xD0
@@ -579,29 +582,18 @@ static void reg_update(const struct device *dev, uint32_t _mask, uint32_t data, 
 #define MXICY_WR32(_val, _reg) \
 	((*(uint32_t *)((_reg))) = (_val))
 
-uint32_t swap32(uint32_t val, uint8_t nbytes)
-{
-	uint32_t ret = 0;
-	int n = 0;
-
-	if (nbytes > 4 || nbytes < 1) {
-		return -1;
-	}
-
-	while (n < nbytes) {
-		ret |= ((val >> (n * 8)) & 0xff) << ((nbytes -n -1) * 8);
-		n++;
-	}
-
-	return ret;
-}
-
 #define UPDATE_WRITE(_mask, _value, _reg) \
 	MXICY_WR32(((_value) | (MXICY_RD32(_reg) & ~(_mask))), (_reg))
 
 #define MSPI_MAX_FREQ        48000000
 #define MSPI_MAX_DEVICE      2
-#define MSPI_TIMEOUT_US      1000000
+#define MSPI_TIMEOUT_US      10000
+#define MSPI_DATA_PATTERN    0xffffffff
+#define MSPI_LINES_TO_BUSWIDTH(lines) \
+	((lines) == 1 ? 0 : (lines) == 2 ? 1 : (lines) == 4 ? 2 : 3)
+#define MSPI_2BYTE_CMD 2
+#define MSPI_4BYTE_ADDR 4
+#define TEST_MODE 1
 #define PWRCTRL_MAX_WAIT_US  5
 #define MSPI_BUSY            BIT(2)
 

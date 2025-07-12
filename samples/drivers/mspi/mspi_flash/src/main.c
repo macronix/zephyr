@@ -25,6 +25,8 @@
 
 #define SPI_FLASH_MULTI_SECTOR_TEST
 
+#define SIGLE_SECTOR_TEST_ENABLE 1
+
 int single_sector_test(const struct device *flash_dev)
 {
 	// const uint8_t expected[] = { 0x55, 0xaa, 0x66, 0x99 };
@@ -57,67 +59,77 @@ int single_sector_test(const struct device *flash_dev)
 	/* Full flash erase if SPI_FLASH_TEST_REGION_OFFSET = 0 and
 	 * SPI_FLASH_SECTOR_SIZE = flash size
 	 */
+	memset(buf_rd, 0, len);
 
+	for (int i = 0; i < 32; i++) {
+		printf ("***[%s], [%s], [%04d], buf_rd is %x\r\n", __FILE__, __func__, __LINE__, buf[i]);
+	}
 
 	rc = flash_read(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, buf, len);
 	if (rc != 0) {
 		printf("Flash read failed! %d\n", rc);
 		return 1;
 	}
+
 	for (int i = 0; i < 32; i++) {
 		printf ("***[%s], [%s], [%04d], buf_rd is %x\r\n", __FILE__, __func__, __LINE__, buf[i]);
 	}
+
 	rc = flash_erase(flash_dev, SPI_FLASH_TEST_REGION_OFFSET,
 			 FLASH_ERASE_SECTOR_SIZE);
+
 	if (rc != 0) {
 		printf("Flash erase failed! %d\n", rc);
 	} else {
 		printf("Flash erase succeeded!\n");
 	}
-		rc = flash_read(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, buf, len);
+	
+	rc = flash_read(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, buf, len);
 	if (rc != 0) {
 		printf("Flash read failed! %d\n", rc);
 		return 1;
 	}
-	for (int i = 0; i < 32; i++) {
-		printf ("***[%s], [%s], [%04d], buf_rd is %x\r\n", __FILE__, __func__, __LINE__, buf[i]);
-	}
+
+	// for (int i = 0; i < 32; i++) {
+	// 	printf ("***[%s], [%s], [%04d], buf_rd is %x\r\n", __FILE__, __func__, __LINE__, buf[i]);
+	// }
+
 	printf("\nTest 2: Flash write\n");
 
 	printf("Attempting to write %zu bytes\n", len);
-// 	rc = flash_write(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, buf_wr, len);
-// 	if (rc != 0) {
-// 		printf("Flash write failed! %d\n", rc);
-// 		return 1;
-// 	}
+	rc = flash_write(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, buf_wr, len);
+	if (rc != 0) {
+		printf("Flash write failed! %d\n", rc);
+		return 1;
+	}
 
-// 	memset(buf, 0, len);
-// 	memset(buf_rd, 0, len);
-// 	memset(dma_buf, 0, len);
+	memset(buf, 0, len);
+	memset(buf_rd, 0, len);
+	memset(dma_buf, 0, len);
 
-// 	rc = flash_read(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, dma_buf, len);
-// 	if (rc != 0) {
-// 		printf("Flash read failed! %d\n", rc);
-// 		return 1;
-// 	}
+	rc = flash_read(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, dma_buf, len);
+	if (rc != 0) {
+		printf("Flash read failed! %d\n", rc);
+		return 1;
+	}
 
-// 	if (memcmp(buf_wr, buf_rd, len) == 0) {
-// 		printf("Data read matches data written. Good!!\n");
-// 	} else {
-// 		const uint8_t *wp = buf_wr;
-// 		const uint8_t *rp = dma_buf;
-// 		const uint8_t *rpe = rp + len;
+	if (memcmp(buf_wr, buf_rd, len) == 0) {
+		printf("Data read matches data written. Good!!\n");
+	} else {
+		const uint8_t *wp = buf_wr;
+		const uint8_t *rp = dma_buf;
+		const uint8_t *rpe = rp + len;
 
-// 		printf("Data read does not match data written!!\n");
-// 		while (rp < rpe) {
-// 			printf("%08x wrote %02x read %02x %s\n",
-// 			       (uint32_t)(SPI_FLASH_TEST_REGION_OFFSET + (rp - dma_buf)),
-// 			       *wp, *rp, (*rp == *wp) ? "match" : "MISMATCH");
-// 			++rp;
-// 			++wp;
-// 		}
+		printf("Data read does not match data written!!\n");
+		while (rp < rpe) {
+			printf("%08x wrote %02x read %02x %s\n",
+			       (uint32_t)(SPI_FLASH_TEST_REGION_OFFSET + (rp - dma_buf)),
+			       *wp, *rp, (*rp == *wp) ? "match" : "MISMATCH");
+			++rp;
+			++wp;
+		}
 
-// 	}
+	}
 
 // 	for (int i = 0; i < 32; i++) {
 // printf ("***[%s], [%s], [%04d], buf_rd is %x\r\n", __FILE__, __func__, __LINE__, dma_buf[i]);
@@ -168,7 +180,7 @@ int multi_sector_test(const struct device *flash_dev)
 
 		while (offs < SPI_FLASH_TEST_REGION_OFFSET + 2 * SPI_FLASH_SECTOR_SIZE) {
 			rc = flash_read(flash_dev, offs, buf, len);
-			printf ("***[%s], [%s], [%04d], buf is %x\r\n", __FILE__, __func__, __LINE__, buf);
+			printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 			if (rc != 0) {
 				printf("Flash read failed! %d\n", rc);
 				return 1;
@@ -226,74 +238,47 @@ int multi_sector_test(const struct device *flash_dev)
 
 int main(void)
 {
- 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-unsigned int sctlr = __get_SCTLR();
-printf ("***[%s], [%s], [%04d], sctlr is %x\r\n", __FILE__, __func__, __LINE__, sctlr);
+	unsigned int sctlr = __get_SCTLR();
+	printf ("***[%s], [%s], [%04d], sctlr is %x\r\n", __FILE__, __func__, __LINE__, sctlr);
 
-	sctlr &= ~0x00000001;
-	__set_SCTLR(sctlr);
-	sctlr = __get_SCTLR();
-
-
-printf ("***[%s], [%s], [%04d], sctlr is %x\r\n", __FILE__, __func__, __LINE__, sctlr);
 	const struct device *mspi_dev = DEVICE_DT_GET_ONE(XLNX_MSPI_COMPAT);
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if (!mspi_dev) {
- 		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+ 		printf ("*** NO MSPI dev found! \r\n");
 		return;
 	}
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
+	printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
 	device_init(mspi_dev);
 
 	const struct device *flash_dev = DEVICE_DT_GET_ONE(jedec_mspi_nor);
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 	if (!flash_dev) {
- 		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+ 		printf ("***NO Flash dev found! \r\n");
 		return;
 	}
-
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 	device_init(flash_dev);
 
 	if (!device_is_ready(flash_dev)) {
-			printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
+		printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 		printk("%s: device not ready.\n", flash_dev->name);
-		return 0;
-	}
-	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+	return 0;
+}
 
-// 	printf("\n%s SPI flash testing\n", flash_dev->name);
-// 	printf("==========================\n");
-
-	// single_sector_test(flash_dev);
-// #if defined SPI_FLASH_MULTI_SECTOR_TEST
-// 	multi_sector_test(flash_dev);
-// #endif
-	// return 0;
-
-
-// 	const struct device *flash_dev = DEVICE_DT_GET(DT_ALIAS(flash0));
-
-// 	if (!device_is_ready(flash_dev)) {
-// 		printk("%s: device not ready.\n", flash_dev->name);
-// 		return 1;
-// 	}
-
-// 	printf("\n%s SPI flash testing\n", flash_dev->name);
-	printf("==========================\n");
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
+#if SIGLE_SECTOR_TEST_ENABLE
 	if (single_sector_test(flash_dev)) {
 		return 1;
 	}
+#endif
+
 // #if defined SPI_FLASH_MULTI_SECTOR_TEST
 // 	if (multi_sector_test(flash_dev)) {
 // 		return 1;
 // 	}
 // #endif
-	printf("==========================\n");
+
 	return 0;
 }

@@ -9,18 +9,6 @@
 #include "mspi_mxicy.h"
 LOG_MODULE_REGISTER(mxicy_mspi_controller);
 
-static uint32_t mxicy_uefc_conf(const struct device *dev);
-static int mxicy_uefc_hc_setup(const struct device *dev);
-static int mxicy_uefc_poll_hc_reg(const struct device *dev, uint32_t reg, uint32_t mask);
-static int mxicy_uefc_io_mode_xfer(const struct device *dev, void *tx, void *rx, uint32_t len,
-				  uint8_t is_data);
-static int mxicy_uefc_init(const struct device *dev);
-static void mxicy_uefc_cs_start(const struct device *dev);
-static int mspi_mxicy_config(const struct mspi_dt_spec *spec);
-static int _api_dev_config(const struct device *dev,
-			   const enum mspi_dev_cfg_mask param_mask,
-			   const struct mspi_dev_cfg *cfg);
-
 #define CE_PORTS_LEN DT_INST_PROP_LEN(0, ce_ports)
 struct mspi_mxicy_config {
 	DEVICE_MMIO_ROM;
@@ -107,7 +95,7 @@ struct mspi_mxicy_data {
 	bool data_dtr;
 };
 
-static int mxicy_uefc_channel_config(const struct device *dev, int ch_type, int port)
+static int mspi_channel_config(const struct device *dev, int ch_type, int port)
 {
 	uint16_t ncsbs;
 	uint8_t dual_ch;
@@ -125,7 +113,7 @@ static int mxicy_uefc_channel_config(const struct device *dev, int ch_type, int 
 		}
 	}
 
-	return 0 ;
+	return 0;
 }
 
 static inline bool mspi_is_inp(const struct device *dev)
@@ -135,7 +123,7 @@ static inline bool mspi_is_inp(const struct device *dev)
 	return (k_sem_count_get(&data->ctx_lock) == 0);
 }
 
-static int mxicy_uefc_init(const struct device *dev)
+static int dev_init(const struct device *dev)
 {
 	int ret = 0;
 	const struct mspi_mxicy_config *cfg = dev->config;
@@ -146,22 +134,35 @@ static int mxicy_uefc_init(const struct device *dev)
 
 	write_base_map_addr(dev, UEFC_BASE_MAP_ADDR);
 
-	ret = mxicy_uefc_channel_config(dev, 0, 0);
-	if (0 != ret) {
-		return ret;
-	}
+	// ret = mspi_channel_config(dev, 0, 0);
+	// if (0 != ret) {
+	// 	return ret;
+	// }
+
+#if TEST_MODE
+	update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, HC_CTRL_CH_LUN_PORT(A, 0, 0));
+	write_top_map_addr(dev, UEFC_TOP_MAP_ADDR);
+
+	update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, HC_CTRL_CH_LUN_PORT(B, 0, 0));
+	write_top_map_addr(dev, UEFC_TOP_MAP_ADDR);
 
 	update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, UEFC_CH_LUN_PORT);
 
 	update_dev_ctrl(dev, DEV_CTRL_TYPE_MASK | DEV_CTRL_SCLK_SEL_MASK,
 		     DEV_CTRL_TYPE_SPI | DEV_CTRL_SCLK_SEL_DIV(4));
 
-	// write_clk_ctrl(dev,  CLK_CTRL_RX_SS_A(cfg->rx_ss_a) | CLK_CTRL_RX_SS_B(cfg->rx_ss_b));
-
 	update_hc_ctrl(dev, HC_CTRL_SIO_SHIFTER(3), HC_CTRL_SIO_SHIFTER(3));
 
 	write_clk_ctrl(dev,  CLK_CTRL_RX_SS_A(1) | CLK_CTRL_RX_SS_B(1));
+	// write_sample_adj(dev,  SAMPLE_ADJ_DQS_IDLY_DOPI(29) | SAMPLE_ADJ_POINT_SEL_DDR(0) |
+	// 		  SAMPLE_ADJ_POINT_SEL_SDR(2));
 
+	// write_sio_idly_1(dev,  SIO_IDLY_1_0123(0));
+
+	// write_sio_idly_2(dev,  SIO_IDLY_2_4567(0));
+#endif
+
+	update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, UEFC_CH_LUN_PORT);
 
 	write_int_sts(dev,  INT_STS_ALL_CLR);
 	write_int_sts_en(dev,  INT_STS_EN_ALL_EN);
@@ -176,9 +177,9 @@ static int mxicy_uefc_init(const struct device *dev)
 	return 0;
 }
 
-static int mxicy_uefc_poll_hc_reg(const struct device *dev, uint32_t reg, uint32_t mask)
+static int mspi_poll_hc_reg(const struct device *dev, uint32_t reg, uint32_t mask)
 {
-	uint32_t val, n = 10000;
+	uint32_t val, n = MSPI_TIMEOUT_US;
 
 	do {
 		val = reg_read(dev, reg) & mask;
@@ -193,7 +194,7 @@ static int mxicy_uefc_poll_hc_reg(const struct device *dev, uint32_t reg, uint32
 	return 0;
 }
 
-static void mxicy_uefc_cs_start(const struct device *dev)
+static void mspi_cs_start(const struct device *dev)
 {
 	/* Enable IO Mode */
 	write_tfr_ctrl(dev, TFR_CTRL_IO_START_BIT);
@@ -212,9 +213,10 @@ static void mxicy_uefc_cs_start(const struct device *dev)
 	while (TFR_CTRL_DEV_ACT_BIT & read_tfr_ctrl(dev)) {
 		;
 	}
+	
 }
 
-static void mxicy_uefc_cs_end(const struct device *dev)
+static void mspi_cs_end(const struct device *dev)
 {
 	/* De-assert CS */
 	write_tfr_ctrl(dev, TFR_CTRL_DEV_DIS_BIT);
@@ -229,12 +231,7 @@ static void mxicy_uefc_cs_end(const struct device *dev)
 	}
 }
 
-static inline void mxicy_uefc_err_dessert_cs(const struct device *dev)
-{
-	mxicy_uefc_cs_end(dev);
-}
-
-static int mxicy_uefc_io_mode_xfer(const struct device *dev, void *tx, void *rx, uint32_t len,
+static int mspi_io_mode_xfer(const struct device *dev, void *tx, void *rx, uint32_t len,
 				  uint8_t is_data)
 {
 	uint32_t nbytes, tmp = 0, ofs = 0;
@@ -246,7 +243,7 @@ static int mxicy_uefc_io_mode_xfer(const struct device *dev, void *tx, void *rx,
 		int ret;
 
 		nbytes = len - ofs;
-		uint32_t data = 0xffffffff;
+		uint32_t data = MSPI_DATA_PATTERN;
 
 		if (nbytes > 4) {
 			nbytes = 4;
@@ -261,14 +258,15 @@ static int mxicy_uefc_io_mode_xfer(const struct device *dev, void *tx, void *rx,
 			tmp = nbytes;
 			nbytes++;
 		}
-		ret = mxicy_uefc_poll_hc_reg(dev, PRES_STS, PRES_STS_TX_NFULL);
-		if (EXIT_SUCCESS != ret) {
+
+		ret = mspi_poll_hc_reg(dev, PRES_STS, PRES_STS_TX_NFULL);
+		if (0 != ret) {
 			return ret;
 		}
 		reg_write(data, dev, TXD(nbytes % 4));
 
-		ret = mxicy_uefc_poll_hc_reg(dev, PRES_STS, PRES_STS_RX_NEMPT);
-		if (EXIT_SUCCESS != ret) {
+		ret = mspi_poll_hc_reg(dev, PRES_STS, PRES_STS_RX_NEMPT);
+		if (0 != ret) {
 			return ret;
 		}
 
@@ -276,14 +274,15 @@ static int mxicy_uefc_io_mode_xfer(const struct device *dev, void *tx, void *rx,
 		if (rx) {
 			memcpy(rx + ofs, &data, tmp ? tmp : nbytes);
 		}
+
 		printf("rx data: %08X\r\n", data);
 		ofs += nbytes;
 	}
 
-	return EXIT_SUCCESS;
+	return 0;
 }
 
-static uint32_t mspi_mxicy_set_line(struct mspi_mxicy_data *data, enum mspi_io_mode io_mode, enum mspi_data_rate data_rate)
+static uint32_t mspi_set_line(struct mspi_mxicy_data *data, enum mspi_io_mode io_mode, enum mspi_data_rate data_rate)
 {
 
 	uint32_t cmd_bus = 0;
@@ -347,9 +346,9 @@ static uint32_t mspi_mxicy_set_line(struct mspi_mxicy_data *data, enum mspi_io_m
 		break;
 	}
 
-	cmd_bus = cmd_lines == 1 ? 0 : cmd_lines == 2 ? 1 : cmd_lines == 4 ? 2 : 3;
-	addr_bus = addr_lines == 1 ? 0 : addr_lines == 2 ? 1 : addr_lines == 4 ? 2 : 3;
-	data_bus = data_lines == 1 ? 0 : data_lines == 2 ? 1 : data_lines == 4 ? 2 : 3;
+	cmd_bus = MSPI_LINES_TO_BUSWIDTH(cmd_lines);
+	addr_bus = MSPI_LINES_TO_BUSWIDTH(addr_lines);
+	data_bus = MSPI_LINES_TO_BUSWIDTH(data_lines);
 
 	uint32_t conf = FIELD_PREP(TFR_MODE_CMD_BUSW_MASK, cmd_bus) | cmd_ddr ? TFR_MODE_CMD_DTR_BIT : 0;
 
@@ -360,7 +359,129 @@ static uint32_t mspi_mxicy_set_line(struct mspi_mxicy_data *data, enum mspi_io_m
 	data->data_buswidth = data_lines;
 	data->data_dtr = data_ddr;
 
+#if TEST_MODE
+	printf ("***[%s], [%s], [%04d], cmd_bus is %x, addr_bus is %x, data_bus is %x, \
+		conf is %x, cmd_lines is %x, addr_lines is %x, data_lines is %x, \
+		\r\n", __FILE__, __func__, __LINE__, cmd_bus, addr_bus, data_bus, conf, cmd_lines, addr_lines, data_lines);
+
+#endif
 	return conf;
+}
+
+static int _api_dev_config(const struct device *dev,
+			   const enum mspi_dev_cfg_mask param_mask,
+			   const struct mspi_dev_cfg *cfg)
+{
+	printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
+
+	struct mspi_mxicy_data *dev_data = dev->data;
+	enum mspi_io_mode io_mode = cfg->io_mode;
+	struct mspi_mxicy_config *dev_config = dev->config;
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
+
+	enum mspi_data_rate data_rate = cfg->data_rate;
+ 	bool dqs_enable = cfg->dqs_enable;	
+	uint32_t freq = cfg->freq;
+	int ret = 0;
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
+
+	if (param_mask & MSPI_DEVICE_CONFIG_ENDIAN) {
+		if (cfg->endian != MSPI_XFER_BIG_ENDIAN) {
+			LOG_ERR("Only big endian transfers are supported.");
+			return -ENOTSUP;
+		}
+	}
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
+
+	if (param_mask & MSPI_DEVICE_CONFIG_CE_POL) {
+		if (cfg->ce_polarity != MSPI_CE_ACTIVE_LOW) {
+			LOG_ERR("Only active low CE is supported.");
+			return -ENOTSUP;
+		}
+	}
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
+
+	if (param_mask & MSPI_DEVICE_CONFIG_MEM_BOUND) {
+		if (cfg->mem_boundary) {
+			LOG_ERR("Auto CE break is not supported.");
+			return -ENOTSUP;
+		}
+	}
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
+	if (param_mask & MSPI_DEVICE_CONFIG_BREAK_TIME) {
+		if (cfg->time_to_break) {
+			LOG_ERR("Auto CE break is not supported.");
+			return -ENOTSUP;
+		}
+	}
+
+	if (param_mask & MSPI_DEVICE_CONFIG_CPP) {
+		if (cfg->cpp) {
+			LOG_ERR("Only SPI mode 0 is supported.");
+			return -ENOTSUP;
+		}
+	}
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
+	if (param_mask & MSPI_DEVICE_CONFIG_IO_MODE ||
+		(param_mask & MSPI_DEVICE_CONFIG_DATA_RATE)
+	) {
+#if defined(CONFIG_MSPI_XIP)
+		dev_data->xip_params_stored.io_mode = cfg->io_mode;
+		dev_data->xip_params_stored.data_rate = cfg->data_rate;
+#endif
+		uint32_t conf = mspi_set_line(dev_data, io_mode, data_rate);
+		write_tfr_mode(dev, conf);
+	}
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
+	if (param_mask & MSPI_DEVICE_CONFIG_FREQUENCY) {
+#if defined(CONFIG_MSPI_XIP)
+		/* Make sure the new setting is compatible with the one used
+		 * for XIP if it is enabled.
+		 */
+		if (!dev_data->xip_enabled) {
+			dev_data->xip_freq = cfg->freq;
+		} else if (dev_data->xip_freq != cfg->freq) {
+			LOG_ERR("Conflict with configuration used for XIP.");
+			return -EINVAL;
+		}
+#endif
+#if !TEST_MODE
+		// uint8_t div = dev_config->clock_frequency / cfg->freq;
+		// update_dev_ctrl(dev, DEV_CTRL_TYPE_MASK | DEV_CTRL_SCLK_SEL_MASK,
+		// 		DEV_CTRL_TYPE_SPI | DEV_CTRL_SCLK_SEL_DIV(div));
+#endif
+	}
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
+	if (param_mask & MSPI_DEVICE_CONFIG_DQS) {
+		if (cfg->dqs_enable) {
+			update_dev_ctrl(dev, DEV_CTRL_DQS_EN, cfg->dqs_enable ? DEV_CTRL_DQS_EN : 0);	
+			update_hc_ctrl(dev, HC_CTRL_DATA_ORDER, cfg->dqs_enable ? HC_CTRL_DATA_ORDER : 0);
+		}
+	}
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
+#if defined(CONFIG_MSPI_XIP)
+	if (param_mask & MSPI_DEVICE_CONFIG_READ_CMD) {
+		dev_data->xip_params_stored.read_cmd = cfg->read_cmd;
+	}
+	if (param_mask & MSPI_DEVICE_CONFIG_WRITE_CMD) {
+		dev_data->xip_params_stored.write_cmd = cfg->write_cmd;
+	}
+	if (param_mask & MSPI_DEVICE_CONFIG_RX_DUMMY) {
+		dev_data->xip_params_stored.rx_dummy = cfg->rx_dummy;
+	}
+	if (param_mask & MSPI_DEVICE_CONFIG_TX_DUMMY) {
+		dev_data->xip_params_stored.tx_dummy = cfg->tx_dummy;
+	}
+	if (param_mask & MSPI_DEVICE_CONFIG_CMD_LEN) {
+		dev_data->xip_params_stored.cmd_length = cfg->cmd_length;
+	}
+	if (param_mask & MSPI_DEVICE_CONFIG_ADDR_LEN) {
+		dev_data->xip_params_stored.addr_length = cfg->addr_length;
+	}
+#endif
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
+
+	return ret;
 }
 
 static int api_dev_config(const struct device *dev,
@@ -397,113 +518,6 @@ static int api_dev_config(const struct device *dev,
 	return rc;
 }
 
-static int _api_dev_config(const struct device *dev,
-			   const enum mspi_dev_cfg_mask param_mask,
-			   const struct mspi_dev_cfg *cfg)
-{
-	struct mspi_mxicy_data *dev_data = dev->data;
-	enum mspi_io_mode io_mode = cfg->io_mode;
-	struct mspi_mxicy_config *dev_config = dev->config;
-
-	enum mspi_data_rate data_rate = cfg->data_rate;
- 	bool dqs_enable = cfg->dqs_enable;	
-	uint32_t freq = cfg->freq;
-	int ret = 0;
-
-	if (param_mask & MSPI_DEVICE_CONFIG_ENDIAN) {
-		if (cfg->endian != MSPI_XFER_BIG_ENDIAN) {
-			LOG_ERR("Only big endian transfers are supported.");
-			return -ENOTSUP;
-		}
-	}
-
-	if (param_mask & MSPI_DEVICE_CONFIG_CE_POL) {
-		if (cfg->ce_polarity != MSPI_CE_ACTIVE_LOW) {
-			LOG_ERR("Only active low CE is supported.");
-			return -ENOTSUP;
-		}
-	}
-
-	if (param_mask & MSPI_DEVICE_CONFIG_MEM_BOUND) {
-		if (cfg->mem_boundary) {
-			LOG_ERR("Auto CE break is not supported.");
-			return -ENOTSUP;
-		}
-	}
-
-	if (param_mask & MSPI_DEVICE_CONFIG_BREAK_TIME) {
-		if (cfg->time_to_break) {
-			LOG_ERR("Auto CE break is not supported.");
-			return -ENOTSUP;
-		}
-	}
-
-	if (param_mask & MSPI_DEVICE_CONFIG_CPP) {
-		if (cfg->cpp) {
-			LOG_ERR("Only SPI mode 0 is supported.");
-			return -ENOTSUP;
-		}
-	}
-
-	if (param_mask & MSPI_DEVICE_CONFIG_IO_MODE ||
-		(param_mask & MSPI_DEVICE_CONFIG_DATA_RATE)
-	) {
-#if defined(CONFIG_MSPI_XIP)
-		dev_data->xip_params_stored.io_mode = cfg->io_mode;
-		dev_data->xip_params_stored.data_rate = cfg->data_rate;
-#endif
-		uint32_t conf = mspi_mxicy_set_line(dev_data, io_mode, data_rate);
-		write_tfr_mode(dev, conf);
-	}
-
-	if (param_mask & MSPI_DEVICE_CONFIG_FREQUENCY) {
-#if defined(CONFIG_MSPI_XIP)
-		/* Make sure the new setting is compatible with the one used
-		 * for XIP if it is enabled.
-		 */
-		if (!dev_data->xip_enabled) {
-			dev_data->xip_freq = cfg->freq;
-		} else if (dev_data->xip_freq != cfg->freq) {
-			LOG_ERR("Conflict with configuration used for XIP.");
-			return -EINVAL;
-		}
-#endif
-		uint8_t div = dev_config->clock_frequency / cfg->freq;
-		update_dev_ctrl(dev, DEV_CTRL_TYPE_MASK | DEV_CTRL_SCLK_SEL_MASK,
-				DEV_CTRL_TYPE_SPI | DEV_CTRL_SCLK_SEL_DIV(div));
-	}
-
-	if (param_mask & MSPI_DEVICE_CONFIG_DQS) {
-		if (cfg->dqs_enable) {
-			update_dev_ctrl(dev, DEV_CTRL_DQS_EN, cfg->dqs_enable ? DEV_CTRL_DQS_EN : 0);	
-			update_hc_ctrl(dev, HC_CTRL_DATA_ORDER, cfg->dqs_enable ? HC_CTRL_DATA_ORDER : 0);
-		}
-	}
-
-#if defined(CONFIG_MSPI_XIP)
-	if (param_mask & MSPI_DEVICE_CONFIG_READ_CMD) {
-		dev_data->xip_params_stored.read_cmd = cfg->read_cmd;
-	}
-	if (param_mask & MSPI_DEVICE_CONFIG_WRITE_CMD) {
-		dev_data->xip_params_stored.write_cmd = cfg->write_cmd;
-	}
-	if (param_mask & MSPI_DEVICE_CONFIG_RX_DUMMY) {
-		dev_data->xip_params_stored.rx_dummy = cfg->rx_dummy;
-	}
-	if (param_mask & MSPI_DEVICE_CONFIG_TX_DUMMY) {
-		dev_data->xip_params_stored.tx_dummy = cfg->tx_dummy;
-	}
-	if (param_mask & MSPI_DEVICE_CONFIG_CMD_LEN) {
-		dev_data->xip_params_stored.cmd_length = cfg->cmd_length;
-	}
-	if (param_mask & MSPI_DEVICE_CONFIG_ADDR_LEN) {
-		dev_data->xip_params_stored.addr_length = cfg->addr_length;
-	}
-#endif
-
-	return ret;
-}
-
 #if defined(CONFIG_MSPI_XIP)
 static int _api_xip_config(const struct device *dev,
 			   const struct mspi_dev_id *dev_id,
@@ -511,7 +525,6 @@ static int _api_xip_config(const struct device *dev,
 {
 	struct mspi_mxicy_data *dev_data = dev->data;
 	int rc;
-	uint8_t *buf = (uint8_t *)k_malloc(0x1000);
 
 	if (!cfg->enable) {
 		write_tfr_ctrl(dev, TFR_CTRL_IO_START_BIT);
@@ -536,7 +549,7 @@ static int _api_xip_config(const struct device *dev,
 		enum mspi_data_rate data_rate = params->data_rate;
 		uint16_t rx_dummy = params->rx_dummy;
 		uint16_t tx_dummy = params->tx_dummy;
-		uint32_t conf = mspi_mxicy_set_line(dev_data, io_mode, data_rate);
+		uint32_t conf = mspi_set_line(dev_data, io_mode, data_rate);
 		ctrl.read |= conf;
 		ctrl.read |=  OP_DD_RD_BIT | OP_CMD_CNT(cmd_length) | 
 			FIELD_PREP(TFR_MODE_ADDR_CNT_MASK, params->addr_length);
@@ -550,7 +563,16 @@ static int _api_xip_config(const struct device *dev,
 
 		write_map_rd_ctrl(dev, ctrl.read);
 		write_map_wr_ctrl(dev, ctrl.write);
-		write_map_cmd(dev, read_cmd || write_cmd << 16 );
+		write_map_cmd(dev, read_cmd | write_cmd << MAP_WR_CMD_SHIFT);
+#if TEST_MODE
+		printf ("***[%s], [%s], [%04d], conf is %x, read_cmd is %x\r\n", __FILE__, __func__, __LINE__, conf, read_cmd);
+		conf = read_map_rd_ctrl(dev);
+		printf ("***[%s], [%s], [%04d], conf is %x, write_cmd is %x, cmd is %x\r\n", __FILE__, __func__, __LINE__, \
+			conf, write_cmd, read_cmd | write_cmd << MAP_WR_CMD_SHIFT);
+		conf = read_map_cmd (dev);
+		printf ("***[%s], [%s], [%04d], conf is %x, addr_length is %x, FIELD_PREP is %X\r\n", __FILE__, __func__, __LINE__, \
+			conf, params->addr_length, FIELD_PREP(TFR_MODE_ADDR_CNT_MASK, params->addr_length));
+#endif
 	} else if (dev_data->xip_params_active.read_cmd !=
 		   dev_data->xip_params_stored.read_cmd ||
 		   dev_data->xip_params_active.write_cmd !=
@@ -607,17 +629,22 @@ static int mspi_pio_prepare(const struct device *dev, struct mspi_xfer *xfer)
 
 	conf &= ~(TFR_MODE_ADDR_CNT_MASK | TFR_MODE_CMD_CNT | TFR_MODE_DMY_MASK | OP_DD_RD_BIT);
 
-	conf |= OP_CMD_CNT(xfer->cmd_length) | OP_ADDR_CNT(xfer->addr_length);
+	conf |= OP_CMD_CNT(xfer->cmd_length) | 
+			FIELD_PREP(TFR_MODE_ADDR_CNT_MASK, xfer->addr_length);
 
 	conf |= OP_DMY_CNT(dummy_len, data->data_dtr, data->data_buswidth);
 
 	conf |= (DIR_IN == xfer->packets->dir ? OP_DD_RD_BIT : 0);
 
 	if (MSPI_DMA == xfer->xfer_mode) {
-		conf |= TFR_MODE_DMA_EN;
+		conf |= TFR_MODE_DMA_EN_BIT;
 	}
 
 	write_tfr_mode(dev, conf);
+
+#if TEST_MODE
+	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
+#endif
 
 	return ret;
 }
@@ -627,73 +654,70 @@ static int mspi_pio_transceive(const struct device *dev, const struct mspi_xfer 
 	const struct mspi_mxicy_config *cfg = dev->config;
 	struct mspi_mxicy_data *data = dev->data;
 	const struct mspi_xfer_packet *packet;
-	uint32_t packet_idx;
 	int ret = 0;
-
-	mspi_pio_prepare(dev, xfer);
 
 	if (data->dev_id) {
 		update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, HC_CTRL_CH_LUN_PORT(A, 0, data->dev_id->dev_idx));
 	}
-
-	mxicy_uefc_cs_start(dev);
+	mspi_cs_start(dev);
 
 	/* Set up command  */
-	if (xfer->cmd_length) {
-		uint32_t cmd = swap32(xfer->packets->cmd,  xfer->cmd_length);
-		printf ("***[%s], [%s], [%04d], cmd is %x\r\n", __FILE__, __func__, __LINE__, cmd);
+	if (xfer->cmd_length != 0) {
+		uint32_t cmd = (xfer->cmd_length == MSPI_2BYTE_CMD ? BSWAP_16(xfer->packets->cmd) : xfer->packets->cmd);
 
-		ret = mxicy_uefc_io_mode_xfer(dev, (uint8_t *)&cmd, 0,
+		ret = mspi_io_mode_xfer(dev, (uint8_t *)&cmd, 0,
 					     xfer->cmd_length, 0);
 
-		if (EXIT_SUCCESS != ret) {
-			mxicy_uefc_err_dessert_cs(dev);
+		if (0 != ret) {
+			mspi_cs_end(dev);
 			return ret;
 		}
 	}
-
 	/* Set up address */
-	if (xfer->addr_length) {
-		uint32_t addr = swap32(xfer->packets->address,  xfer->addr_length);
+	if (xfer->addr_length != 0) {
+		uint32_t addr = (xfer->addr_length == MSPI_4BYTE_ADDR ? BSWAP_32(xfer->packets->address) : BSWAP_24(xfer->packets->address));
 
-		ret = mxicy_uefc_io_mode_xfer(dev, (uint8_t *)&addr, 0,
+		ret = mspi_io_mode_xfer(dev, (uint8_t *)&addr, 0,
 					     xfer->addr_length, 0);
 
-
-		if (EXIT_SUCCESS != ret) {
-			mxicy_uefc_err_dessert_cs(dev);
+		if (0 != ret) {
+			mspi_cs_end(dev);
 		}
 	}
-
 	uint32_t dummy_length = (MSPI_TX == xfer->packets->dir) ? xfer->tx_dummy : xfer->rx_dummy;
 
 	/* Setup dummy: dummy's bus width and DTR are determined by the data */
-	if (dummy_length) {
+	if (dummy_length != 0) {
 		uint32_t dummy_len =
 			(dummy_length * (data->data_dtr + 1)) / (8 / (data->data_buswidth));
 
-		ret = mxicy_uefc_io_mode_xfer(dev, 0, 0, dummy_len, 0);
-		if (EXIT_SUCCESS != ret) {
-			mxicy_uefc_err_dessert_cs(dev);
+		ret = mspi_io_mode_xfer(dev, 0, 0, dummy_len, 0);
+		if (0 != ret) {
+			mspi_cs_end(dev);
 			return ret;
 		}
 	}
 
 	/* Set up read/write Data */
-	if (xfer->packets->data_buf) {
+	if (xfer->packets->data_buf != NULL) {
 
-		ret = mxicy_uefc_io_mode_xfer(
+		ret = mspi_io_mode_xfer(
 			dev, MSPI_TX == xfer->packets->dir ? xfer->packets->data_buf : 0,
 			MSPI_RX == xfer->packets->dir ? xfer->packets->data_buf : 0,
 			xfer->packets->num_bytes, 1);
 
-		if (EXIT_SUCCESS != ret) {
-			mxicy_uefc_err_dessert_cs(dev);
+		if (0 != ret) {
+			mspi_cs_end(dev);
 			return ret;
 		}
 	}
 
-	mxicy_uefc_cs_end(dev);
+	mspi_cs_end(dev);
+
+
+#if TEST_MODE
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+#endif
 
 	return ret;
 }
@@ -703,111 +727,130 @@ static int mspi_dma_transceive(const struct device *dev,
 {
 	const struct mspi_mxicy_config *cfg = dev->config;
 	struct mspi_mxicy_data *data = dev->data;
-	const struct mspi_xfer_packet *packet;
-	uint32_t packet_idx;
-	int ret = 0;
 	uint32_t reg_int_sts;
+	int ret = 0;
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
-	mspi_pio_prepare(dev, xfer);
+	if ((xfer->packets->num_bytes % 4) != 0) {
+		return -EINVAL;
+	}
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
 	write_int_sts(dev, INT_STS_DMA_TFR_CMPLT_BIT | INT_STS_DMA_INT_BIT);
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
-	mxicy_uefc_cs_start(dev);
+	mspi_cs_start(dev);
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
 	/* Set up command  */
-	if (xfer->cmd_length) {
-		uint32_t cmd = swap32(xfer->packets->cmd,  xfer->cmd_length);
-		printf ("***[%s], [%s], [%04d], dma cmd is %x\r\n", __FILE__, __func__, __LINE__, cmd);
+	if (xfer->cmd_length != 0) {
+		uint16_t cmd = (xfer->cmd_length == MSPI_2BYTE_CMD ? BSWAP_16(xfer->packets->cmd) : xfer->packets->cmd);
 
-		ret = mxicy_uefc_io_mode_xfer(dev, (uint8_t *)&cmd, 0,
+		ret = mspi_io_mode_xfer(dev, (uint8_t *)&cmd, 0,
 					     xfer->cmd_length, 0);
 
-		if (EXIT_SUCCESS != ret) {
-			mxicy_uefc_err_dessert_cs(dev);
+		if (0 != ret) {
+			mspi_cs_end(dev);
 			return ret;
 		}
 	}
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
 	/* Set up address */
-	if (xfer->addr_length) {
-		uint32_t addr = swap32(xfer->packets->address,  xfer->addr_length);
+	if (xfer->addr_length != 0) {
+		uint32_t addr = (xfer->addr_length == MSPI_4BYTE_ADDR ? BSWAP_32(xfer->packets->address) : BSWAP_24(xfer->packets->address));
 
-		ret = mxicy_uefc_io_mode_xfer(dev, (uint8_t *)&addr, 0,
+		ret = mspi_io_mode_xfer(dev, (uint8_t *)&addr, 0,
 					     xfer->addr_length, 0);
 
-
-		if (EXIT_SUCCESS != ret) {
-			mxicy_uefc_err_dessert_cs(dev);
+		if (0 != ret) {
+			mspi_cs_end(dev);
 		}
 	}
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
 	uint32_t dummy_length = (MSPI_TX == xfer->packets->dir) ? xfer->tx_dummy : xfer->rx_dummy;
 
 	/* Setup dummy: dummy's bus width and DTR are determined by the data */
-	if (dummy_length) {
+	if (dummy_length != 0) {
 		uint32_t dummy_len =
 			(dummy_length * (data->data_dtr + 1)) / (8 / (data->data_buswidth));
 
-		ret = mxicy_uefc_io_mode_xfer(dev, 0, 0, dummy_len, 0);
-		if (EXIT_SUCCESS != ret) {
-			mxicy_uefc_err_dessert_cs(dev);
+		ret = mspi_io_mode_xfer(dev, 0, 0, dummy_len, 0);
+		if (0 != ret) {
+			mspi_cs_end(dev);
 			return ret;
 		}
 	}
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
 	write_sdma_cnt(dev, xfer->packets->num_bytes);
 
 	write_sdma_addr(dev, xfer->packets->data_buf);
 
-	uint32_t buf_addr = read_sdma_addr(dev);
-
 	/* Set up read/write Data */
-	if (xfer->packets->data_buf) {
-
+	if (xfer->packets->data_buf != NULL) {
 		do {
 			reg_int_sts = read_int_sts(dev);
-			buf_addr = read_sdma_addr(dev);
 
 			if (INT_STS_DMA_INT_BIT & reg_int_sts) {
 				write_int_sts(dev, INT_STS_DMA_INT_BIT);
-				write_sdma_addr(dev, buf_addr);
+				write_sdma_addr(dev, xfer->packets->data_buf);
 			}
 
 		} while (!(INT_STS_DMA_TFR_CMPLT_BIT & reg_int_sts));
 	}
-
-	mxicy_uefc_cs_end(dev);
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
+#if TEST_MODE
+	printf ("***[%s], [%s], [%04d], dest addr is %x\r\n", __FILE__, __func__, __LINE__, \
+		xfer->packets->data_buf);
+		
+	printf("  - SAMPLE_ADJ: %08X, SIO_IDLY_1: %08X: SIO_IDLY_2: %08X, DEV CTRL: %08X, HC_CTRL: %08X, TFR_MODE: %08X, CLK_CTRL: %08X\r\n",\
+		read_sample_adj(dev), read_sio_idly_1(dev), read_sio_idly_2(dev), \
+		read_dev_ctrl(dev), read_hc_ctrl(dev), read_tfr_mode(dev), read_clk_ctrl(dev));
+#endif
+	mspi_cs_end(dev);
 }
 
 static int mspi_mxicy_transceive(const struct device *dev, const struct mspi_dev_id *dev_id,
-				const struct mspi_xfer *req)
+				const struct mspi_xfer *xfer)
 {
 	const struct mspi_mxicy_config *cfg = dev->config;
 	struct mspi_mxicy_data *dev_data = dev->data;
 	int rc = 0;
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
 	if (dev_id != dev_data->dev_id) {
 		LOG_ERR("Controller is not configured for this device");
 		return -EINVAL;
 	}
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
 	/* TODO: add support for asynchronous transfers */
-	if (req->async) {
+	if (xfer->async) {
 		LOG_ERR("Asynchronous transfers are not supported");
 		return -ENOTSUP;
 	}
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
 	(void)k_sem_take(&dev_data->ctx_lock, K_FOREVER);
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
-	if (req->xfer_mode == MSPI_PIO) {
-		return mspi_pio_transceive(dev, req);
-	} else if (req->xfer_mode == MSPI_DMA) {
-		return mspi_dma_transceive(dev, req);
+	mspi_pio_prepare(dev, xfer);
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
+
+	if (xfer->xfer_mode == MSPI_PIO) {
+		rc =  mspi_pio_transceive(dev, xfer);
+	} else if (xfer->xfer_mode == MSPI_DMA) {
+		rc = mspi_dma_transceive(dev, xfer);
 	} else {
-		return -EIO;
+		goto out;
 	}
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
+out:
 	k_sem_give(&dev_data->ctx_lock);
+	return rc;
 }
 
 static int api_get_channel_status(const struct device *dev, uint8_t ch)
@@ -879,7 +922,7 @@ static int api_config(const struct mspi_dt_spec *spec)
 	return -ENOTSUP;
 }
 
-static struct mspi_driver_api mspi_mxicy_driver_api = {
+static struct mspi_driver_api drv_api = {
 	.config = api_config,
 	.dev_config = api_dev_config,
 	.get_channel_status = api_get_channel_status,
@@ -890,16 +933,18 @@ static struct mspi_driver_api mspi_mxicy_driver_api = {
 	.timing_config = mspi_mxicy_timing_config,
 };
 
-static const struct mspi_mxicy_config mspi_mxicy_config_0 = 
-{
-	DEVICE_MMIO_ROM_INIT(DT_DRV_INST(0)),
-	.clock_frequency = DT_INST_PROP(0, clock_frequency),
-	.ce_ports_len = DT_INST_PROP_LEN(0, ce_ports),
-	.rx_ss_a = DT_INST_PROP(0, rx_ss_a),
-	.rx_ss_b = DT_INST_PROP(0, rx_ss_b),
-};
+#define MSPI_MXICY_INST(inst)						\
+	static struct mspi_mxicy_data dev##inst##_data;			\
+	static const struct mspi_mxicy_config dev##inst##_config = {	\
+		DEVICE_MMIO_ROM_INIT(DT_DRV_INST(inst)),		\
+		.clock_frequency =  DT_INST_PROP(inst, clock_frequency),	\
+		.rx_ss_a = DT_INST_PROP(inst, rx_ss_a),\
+		.rx_ss_b = DT_INST_PROP(inst, rx_ss_b),\
+	};\
+	DEVICE_DT_INST_DEFINE(inst,					\
+		dev_init, NULL,			\
+		&dev##inst##_data, &dev##inst##_config,			\
+		POST_KERNEL, CONFIG_MSPI_INIT_PRIORITY,			\
+		&drv_api);
 
-static struct mspi_mxicy_data mspi_mxicy_data_0;
-
-DEVICE_DT_INST_DEFINE(0, &mxicy_uefc_init, NULL, &mspi_mxicy_data_0, &mspi_mxicy_config_0, POST_KERNEL,
-		      CONFIG_MSPI_INIT_PRIORITY, &mspi_mxicy_driver_api);
+DT_INST_FOREACH_STATUS_OKAY(MSPI_MXICY_INST)
