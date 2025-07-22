@@ -149,20 +149,12 @@ static int dev_init(const struct device *dev)
 	update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, UEFC_CH_LUN_PORT);
 
 	update_dev_ctrl(dev, DEV_CTRL_TYPE_MASK | DEV_CTRL_SCLK_SEL_MASK,
-		     DEV_CTRL_TYPE_SPI | DEV_CTRL_SCLK_SEL_DIV(4));
+		     DEV_CTRL_TYPE_SPI | DEV_CTRL_SCLK_SEL_DIV(2));
 
 	update_hc_ctrl(dev, HC_CTRL_SIO_SHIFTER(3), HC_CTRL_SIO_SHIFTER(3));
 
 	write_clk_ctrl(dev,  CLK_CTRL_RX_SS_A(1) | CLK_CTRL_RX_SS_B(1));
-	// write_sample_adj(dev,  SAMPLE_ADJ_DQS_IDLY_DOPI(29) | SAMPLE_ADJ_POINT_SEL_DDR(0) |
-	// 		  SAMPLE_ADJ_POINT_SEL_SDR(2));
-
-	// write_sio_idly_1(dev,  SIO_IDLY_1_0123(0));
-
-	// write_sio_idly_2(dev,  SIO_IDLY_2_4567(0));
 #endif
-
-	update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, UEFC_CH_LUN_PORT);
 
 	write_int_sts(dev,  INT_STS_ALL_CLR);
 	write_int_sts_en(dev,  INT_STS_EN_ALL_EN);
@@ -173,6 +165,15 @@ static int dev_init(const struct device *dev)
 	write_err_int_sts_sig_en(dev,  ERR_INT_STS_SIG_EN_ALL_EN);
 
 	write_int_sts_en(dev,  INT_STS_DMA_BIT | INT_STS_EN_DMA_TFR_CMPLT_BIT);
+
+#if TEST_MODE
+	write_sample_adj(dev,  SAMPLE_ADJ_DQS_IDLY_DOPI(29) | SAMPLE_ADJ_POINT_SEL_DDR(0) |
+			  SAMPLE_ADJ_POINT_SEL_SDR(2));
+
+	write_sio_idly_1(dev,  SIO_IDLY_1_0123(0));
+
+	write_sio_idly_2(dev,  SIO_IDLY_2_4567(0));
+#endif
 
 	return 0;
 }
@@ -350,19 +351,25 @@ static uint32_t mspi_set_line(struct mspi_mxicy_data *data, enum mspi_io_mode io
 	addr_bus = MSPI_LINES_TO_BUSWIDTH(addr_lines);
 	data_bus = MSPI_LINES_TO_BUSWIDTH(data_lines);
 
-	uint32_t conf = FIELD_PREP(TFR_MODE_CMD_BUSW_MASK, cmd_bus) | cmd_ddr ? TFR_MODE_CMD_DTR_BIT : 0;
+	uint32_t conf = FIELD_PREP(TFR_MODE_CMD_BUSW_MASK, cmd_bus) | (cmd_ddr ? TFR_MODE_CMD_DTR_BIT : 0);
 
-	conf |= FIELD_PREP(TFR_MODE_ADDR_BUSW_MASK, addr_bus) | addr_ddr ? TFR_MODE_ADDR_DTR_BIT : 0;
+	conf |= FIELD_PREP(TFR_MODE_ADDR_BUSW_MASK, addr_bus) | (addr_ddr ? TFR_MODE_ADDR_DTR_BIT : 0);
 
-	conf |= FIELD_PREP(TFR_MODE_DATA_BUSW_MASK, data_bus) | data_ddr ? TFR_MODE_DATA_DTR_BIT : 0;
+	conf |= FIELD_PREP(TFR_MODE_DATA_BUSW_MASK, data_bus) | (data_ddr ? TFR_MODE_DATA_DTR_BIT : 0);
 
 	data->data_buswidth = data_lines;
 	data->data_dtr = data_ddr;
 
 #if TEST_MODE
+	uint32_t conf_1 = FIELD_PREP(TFR_MODE_CMD_BUSW_MASK, cmd_bus);
+	uint32_t conf_2 = FIELD_PREP(TFR_MODE_ADDR_BUSW_MASK, addr_bus);
+	uint32_t conf_3 = FIELD_PREP(TFR_MODE_DATA_BUSW_MASK, data_bus);
+
 	printf ("***[%s], [%s], [%04d], cmd_bus is %x, addr_bus is %x, data_bus is %x, \
 		conf is %x, cmd_lines is %x, addr_lines is %x, data_lines is %x, \
-		\r\n", __FILE__, __func__, __LINE__, cmd_bus, addr_bus, data_bus, conf, cmd_lines, addr_lines, data_lines);
+		cmd_ddr is %x, addr_ddr is %x, data_ddr is %x, conf_1 is %x, conf_2 is %x, conf_3 is %x\
+		\r\n", __FILE__, __func__, __LINE__, cmd_bus, addr_bus, data_bus, conf, cmd_lines, \
+		addr_lines, data_lines, cmd_ddr, addr_ddr, data_ddr, conf_1, conf_2, conf_3);
 
 #endif
 	return conf;
@@ -454,8 +461,9 @@ printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 	if (param_mask & MSPI_DEVICE_CONFIG_DQS) {
 		if (cfg->dqs_enable) {
+			printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 			update_dev_ctrl(dev, DEV_CTRL_DQS_EN, cfg->dqs_enable ? DEV_CTRL_DQS_EN : 0);	
-			update_hc_ctrl(dev, HC_CTRL_DATA_ORDER, cfg->dqs_enable ? HC_CTRL_DATA_ORDER : 0);
+			// update_hc_ctrl(dev, HC_CTRL_DATA_ORDER, cfg->dqs_enable ? HC_CTRL_DATA_ORDER : 0);
 		}
 	}
 printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);

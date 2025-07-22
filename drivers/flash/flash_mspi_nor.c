@@ -22,10 +22,10 @@ LOG_MODULE_REGISTER(flash_mspi_nor, CONFIG_FLASH_LOG_LEVEL);
 #define IO_MODE 1
 #define IO_MODE_DMA 0
 #define IO_MODE_DMA 0
-#define DOPI_MODE 0
-#define OCTA_MODE 0
+#define DOPI_MODE 1
+#define OCTA_MODE 1
 #define XIP_MODE 0
-#define DMA_MODE_RD 1
+#define DMA_MODE_RD 0
 #define DMA_MODE_WR 0
 #define TEST_MODE 1
 
@@ -578,6 +578,49 @@ static int default_io_mode(const struct device *dev)
 		rc = dev_cfg_apply(dev, &mspi_dev_cfg_xip);
 		printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
+		flash_mspi_command_set(dev, &commands_single.write_en);
+
+		rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+					&dev_data->xfer);
+
+		flash_mspi_command_set(dev, &commands_single.page_program);
+
+		dev_data->packet.data_buf  = buf_wr;
+		dev_data->packet.address  = 0;
+		dev_data->packet.num_bytes = 32;
+		rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+					&dev_data->xfer);
+
+		rc = wait_until_ready(dev, K_MSEC(1));
+
+		flash_mspi_command_set(dev, &commands_single.read);
+
+		dev_data->packet.data_buf  = buf;
+		dev_data->packet.address  = 0;
+		dev_data->packet.num_bytes = 32;
+		rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+					&dev_data->xfer);
+
+		for (int i = 0; i < 32; i++) {
+			printf ("***[%s], [%s], [%04d], buf is %x\r\n", __FILE__, __func__, __LINE__, buf[i]);
+		}
+
+		if (IS_ENABLED (OCTA_MODE)) {
+			memset (buf , 0x00, 32);
+			rc = octal_enable_set(dev);
+			rc = dev_cfg_apply(dev, (OCTA_MODE ? &mspi_dev_cfg_octal : &mspi_dev_cfg_xip));
+			flash_mspi_command_set(dev, &commands_octal.read);
+
+			dev_data->packet.data_buf  = buf;
+			dev_data->packet.address  = 0;
+			dev_data->packet.num_bytes = 32;
+			rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+						&dev_data->xfer);
+
+			for (int i = 0; i < 32; i++) {
+				printf ("***[%s], [%s], [%04d], buf is %x\r\n", __FILE__, __func__, __LINE__, buf[i]);
+			}	
+		}
 	} else if (IS_ENABLED (XIP_MODE)) {
 		if (IS_ENABLED (OCTA_MODE)) {
 			rc = dev_cfg_apply(dev, &mspi_dev_cfg_xip);

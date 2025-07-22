@@ -25,7 +25,7 @@
 
 #define SPI_FLASH_MULTI_SECTOR_TEST
 
-#define SIGLE_SECTOR_TEST_ENABLE 1
+#define SIGLE_SECTOR_TEST_ENABLE 0
 
 int single_sector_test(const struct device *flash_dev)
 {
@@ -131,10 +131,6 @@ int single_sector_test(const struct device *flash_dev)
 
 	}
 
-// 	for (int i = 0; i < 32; i++) {
-// printf ("***[%s], [%s], [%04d], buf_rd is %x\r\n", __FILE__, __func__, __LINE__, dma_buf[i]);
-
-// 	}
 	return rc;
 }
 
