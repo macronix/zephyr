@@ -21,7 +21,6 @@ LOG_MODULE_REGISTER(flash_mspi_nor, CONFIG_FLASH_LOG_LEVEL);
 #define READ_ID_FORCE_SINGLE 1
 #define IO_MODE 1
 #define IO_MODE_DMA 0
-#define IO_MODE_DMA 0
 #define DOPI_MODE 1
 #define OCTA_MODE 1
 #define XIP_MODE 0
@@ -98,10 +97,8 @@ static int acquire(const struct device *dev)
 	const struct flash_mspi_nor_config *dev_config = dev->config;
 	struct flash_mspi_nor_data *dev_data = dev->data;
 	int rc = 0;
-printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
 	k_sem_take(&dev_data->acquired, K_FOREVER);
-printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
 	if (rc < 0) {
 		printf("pm_device_runtime_get() failed: %d", rc);
@@ -110,21 +107,16 @@ printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 		 * if needed for the flash device.
 		 */
 
-printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
 		if (rc < 0) {
 			printf("mspi_dev_config() failed: %d", rc);
-printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
 		} else {
-printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
 			return 0;
 		}
-printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
 	}
-printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
 	k_sem_give(&dev_data->acquired);
 	return rc;
@@ -199,7 +191,7 @@ printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 	}
 
 #ifdef IO_MODE
-	if (IS_ENABLED(IO_MODE_DMA)) {
+	if (IS_ENABLED(IO_MODE)) {
 		flash_mspi_command_set(dev, &dev_config->jedec_cmds->read);
 	} else if (IS_ENABLED(DMA_MODE_RD)) {
 		flash_mspi_command_set_dma(dev, &dev_config->jedec_cmds->read);
@@ -355,7 +347,7 @@ static int api_write(const struct device *dev, off_t addr, const void *src,
 		}
 
 #ifdef IO_MODE
-		if (IS_ENABLED(IO_MODE_DMA)) {
+		if (IS_ENABLED(IO_MODE)) {
 			flash_mspi_command_set(dev, &dev_config->jedec_cmds->page_program);
 		} else if (IS_ENABLED(DMA_MODE_WR)) {
 			flash_mspi_command_set_dma(dev, &dev_config->jedec_cmds->page_program);
@@ -609,17 +601,17 @@ static int default_io_mode(const struct device *dev)
 			memset (buf , 0x00, 32);
 			rc = octal_enable_set(dev);
 			rc = dev_cfg_apply(dev, (OCTA_MODE ? &mspi_dev_cfg_octal : &mspi_dev_cfg_xip));
-			flash_mspi_command_set(dev, &commands_octal.read);
+			// flash_mspi_command_set(dev, &commands_octal.read);
 
-			dev_data->packet.data_buf  = buf;
-			dev_data->packet.address  = 0;
-			dev_data->packet.num_bytes = 32;
-			rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
-						&dev_data->xfer);
+			// dev_data->packet.data_buf  = buf;
+			// dev_data->packet.address  = 0;
+			// dev_data->packet.num_bytes = 32;
+			// rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+			// 			&dev_data->xfer);
 
-			for (int i = 0; i < 32; i++) {
-				printf ("***[%s], [%s], [%04d], buf is %x\r\n", __FILE__, __func__, __LINE__, buf[i]);
-			}	
+			// for (int i = 0; i < 32; i++) {
+			// 	printf ("***[%s], [%s], [%04d], buf is %x\r\n", __FILE__, __func__, __LINE__, buf[i]);
+			// }	
 		}
 	} else if (IS_ENABLED (XIP_MODE)) {
 		if (IS_ENABLED (OCTA_MODE)) {

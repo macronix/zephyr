@@ -614,3 +614,43 @@ enum mspi_mxicy_timing_param {
 	MSPI_MXICY_SET_SIO_LOW_DELAY     = BIT(4),
 	MSPI_MXICY_SET_SIO_HIGH_DELAY    = BIT(5),
 };
+
+#if TEST_MODE
+
+#define INT_STS_DMA_TFR_CMPLT	BIT(7)
+#define INT_STS_DMA_INT		BIT(6)
+#define INT_STS_EN_DMA_TFR_CMPLT	BIT(7)
+#define INT_STS_DMA		BIT(6)
+#define TFR_MODE_DATA_DTR		BIT(16)
+#define TFR_MODE_ADDR_DTR   		BIT(13)
+#define TFR_MODE_CMD_DTR    		BIT(10)
+#define TFR_MODE_DMA_EN		BIT(0)
+
+#define MXIC_RD32(_reg) \
+	(*(volatile uint32_t *)(_reg))
+
+#define MXIC_WR32(_val, _reg) \
+	((*(uint32_t *)((_reg))) = (_val))
+
+int mxic_wr32 (uint32_t _val,  uint32_t *_reg) {
+	*_reg= (_val);
+}
+
+uint32_t swap32(uint32_t val, uint8_t nbytes)
+{
+	uint32_t ret = 0;
+	int n = 0;
+
+	if (nbytes > 4 || nbytes < 1) {
+		return -1;
+	}
+
+	while (n < nbytes) {
+		ret |= ((val >> (n * 8)) & 0xff) << ((nbytes -n -1) * 8);
+		n++;
+	}
+
+	return ret;
+}
+
+#endif

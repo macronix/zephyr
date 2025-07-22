@@ -25,7 +25,7 @@
 
 #define SPI_FLASH_MULTI_SECTOR_TEST
 
-#define SIGLE_SECTOR_TEST_ENABLE 0
+#define SIGLE_SECTOR_TEST_ENABLE 1
 
 int single_sector_test(const struct device *flash_dev)
 {
@@ -107,7 +107,7 @@ int single_sector_test(const struct device *flash_dev)
 	memset(buf_rd, 0, len);
 	memset(dma_buf, 0, len);
 
-	rc = flash_read(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, dma_buf, len);
+	rc = flash_read(flash_dev, SPI_FLASH_TEST_REGION_OFFSET, buf, len);
 	if (rc != 0) {
 		printf("Flash read failed! %d\n", rc);
 		return 1;
@@ -117,13 +117,13 @@ int single_sector_test(const struct device *flash_dev)
 		printf("Data read matches data written. Good!!\n");
 	} else {
 		const uint8_t *wp = buf_wr;
-		const uint8_t *rp = dma_buf;
+		const uint8_t *rp = buf;
 		const uint8_t *rpe = rp + len;
 
 		printf("Data read does not match data written!!\n");
 		while (rp < rpe) {
 			printf("%08x wrote %02x read %02x %s\n",
-			       (uint32_t)(SPI_FLASH_TEST_REGION_OFFSET + (rp - dma_buf)),
+			       (uint32_t)(SPI_FLASH_TEST_REGION_OFFSET + (rp - buf)),
 			       *wp, *rp, (*rp == *wp) ? "match" : "MISMATCH");
 			++rp;
 			++wp;
