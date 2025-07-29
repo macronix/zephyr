@@ -917,7 +917,13 @@ static int mspi_pio_prepare(const struct device *dev, struct mspi_xfer *xfer)
 	write_tfr_mode(dev, conf);
 
 #if TEST_MODE
+	int value = 0;
+	value = FIELD_PREP(TFR_MODE_ADDR_CNT_MASK, xfer->addr_length);
 	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
+	printf ("***[%s], [%s], [%04d], addr_length is %x\r\n", __FILE__, __func__, __LINE__, xfer->addr_length);
+	printf ("***[%s], [%s], [%04d], FIELD_PREP for addr_length is %x\r\n", __FILE__, __func__,\
+			 __LINE__, value);
+
 #endif
 
 	return ret;

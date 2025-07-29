@@ -211,7 +211,7 @@ enum HC_XFER_MODE_TYPE {
 	#define TFR_MODE_DATA_BUSW_MASK			GENMASK(16, 14)
 	#define TFR_MODE_CMD_BUSW_MASK			GENMASK(10, 8)
 	#define TFR_MODE_ADDR_BUSW_MASK			GENMASK(13, 11)
-	#define TFR_MODE_ADDR_CNT_MASK			GENMASK(19, 18)
+	#define TFR_MODE_ADDR_CNT_MASK			GENMASK(20, 18)
 
 	#define OP_ADDR_CNT(x)		(((x) & 0x7) << 18)
 	#define OP_CMD_CNT(x)		(((x) - 1) << 17)
