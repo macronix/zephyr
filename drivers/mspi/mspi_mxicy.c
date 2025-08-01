@@ -132,91 +132,47 @@ static int dev_init(const struct device *dev)
 	k_sem_init(&data->cfg_lock, 1, 1);
 	k_sem_init(&data->ctx_lock, 1, 1);
 
-// 	write_base_map_addr(dev, UEFC_BASE_MAP_ADDR);
+	write_base_map_addr(dev, UEFC_BASE_MAP_ADDR);
 
-// 	// ret = mspi_channel_config(dev, 0, 0);
-// 	// if (0 != ret) {
-// 	// 	return ret;
-// 	// }
-
-// #if TEST_MODE
-// 	update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, HC_CTRL_CH_LUN_PORT(A, 0, 0));
-// 	write_top_map_addr(dev, UEFC_TOP_MAP_ADDR);
-
-// 	update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, HC_CTRL_CH_LUN_PORT(B, 0, 0));
-// 	write_top_map_addr(dev, UEFC_TOP_MAP_ADDR);
-
-// 	update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, UEFC_CH_LUN_PORT);
-
-// 	update_dev_ctrl(dev, DEV_CTRL_TYPE_MASK | DEV_CTRL_SCLK_SEL_MASK,
-// 		     DEV_CTRL_TYPE_SPI | DEV_CTRL_SCLK_SEL_DIV(2));
-
-// 	update_hc_ctrl(dev, HC_CTRL_SIO_SHIFTER(3), HC_CTRL_SIO_SHIFTER(3));
-
-// 	write_clk_ctrl(dev,  CLK_CTRL_RX_SS_A(1) | CLK_CTRL_RX_SS_B(1));
-// #endif
-
-// 	write_int_sts(dev,  INT_STS_ALL_CLR);
-// 	write_int_sts_en(dev,  INT_STS_EN_ALL_EN);
-// 	write_int_sts_sig_en(dev,  INT_STS_SIG_EN_ALL_EN);
-
-// 	write_err_int_sts(dev,  ERR_INT_STS_ALL_CLR);
-// 	write_err_int_sts_en(dev,  ERR_INT_STS_EN_ALL_EN);
-// 	write_err_int_sts_sig_en(dev,  ERR_INT_STS_SIG_EN_ALL_EN);
-
-// 	write_int_sts_en(dev,  INT_STS_DMA_BIT | INT_STS_EN_DMA_TFR_CMPLT_BIT);
-
-// #if TEST_MODE
-// 	write_sample_adj(dev,  SAMPLE_ADJ_DQS_IDLY_DOPI(29) | SAMPLE_ADJ_POINT_SEL_DDR(0) |
-// 			  SAMPLE_ADJ_POINT_SEL_SDR(2));
-
-// 	write_sio_idly_1(dev,  SIO_IDLY_1_0123(0));
-
-// 	write_sio_idly_2(dev,  SIO_IDLY_2_4567(0));
-// #endif
+	// ret = mspi_channel_config(dev, 0, 0);
+	// if (0 != ret) {
+	// 	return ret;
+	// }
 
 #if TEST_MODE
-	uint32_t uefc_version = 0;
+	update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, HC_CTRL_CH_LUN_PORT(A, 0, 0));
+	write_top_map_addr(dev, UEFC_TOP_MAP_ADDR);
 
-	DEVICE_MMIO_MAP(dev, K_MEM_CACHE_NONE);
+	update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, HC_CTRL_CH_LUN_PORT(B, 0, 0));
+	write_top_map_addr(dev, UEFC_TOP_MAP_ADDR);
 
-	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
+	update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, UEFC_CH_LUN_PORT);
 
-	uefc_version = MXIC_RD32(reg_base + INT_STS_SIG_EN);
-	MXIC_WR32(UEFC_BASE_MAP_ADDR, reg_base + BASE_MAP_ADDR);
-	MXIC_WR32(UEFC_TOP_MAP_ADDR, reg_base + TOP_MAP_ADDR);
+	update_dev_ctrl(dev, DEV_CTRL_TYPE_MASK | DEV_CTRL_SCLK_SEL_MASK,
+		     DEV_CTRL_TYPE_SPI | DEV_CTRL_SCLK_SEL_DIV(2));
 
-	UPDATE_WRITE(HC_CTRL_CH_LUN_PORT_MASK, UEFC_CH_LUN_PORT, reg_base + HC_CTRL);
-	UPDATE_WRITE(DEV_CTRL_TYPE_MASK | DEV_CTRL_SCLK_SEL_MASK,
-		     DEV_CTRL_TYPE_SPI | DEV_CTRL_SCLK_SEL_DIV(4), reg_base + DEV_CTRL);
+	update_hc_ctrl(dev, HC_CTRL_SIO_SHIFTER(3), HC_CTRL_SIO_SHIFTER(3));
 
-	uefc_version = MXIC_RD32(reg_base + HC_VER);
+	write_clk_ctrl(dev,  CLK_CTRL_RX_SS_A(1) | CLK_CTRL_RX_SS_B(1));
+#endif
 
-	UPDATE_WRITE(HC_CTRL_SIO_SHIFTER(3), HC_CTRL_SIO_SHIFTER(3), reg_base + HC_CTRL);
-	printf("***[%s], [%s], [%04d],uefc_version is %x\r\n", __FILE__, __func__, __LINE__,
-	       uefc_version);
+	write_int_sts(dev,  INT_STS_ALL_CLR);
+	write_int_sts_en(dev,  INT_STS_EN_ALL_EN);
+	write_int_sts_sig_en(dev,  INT_STS_SIG_EN_ALL_EN);
 
-	MXIC_WR32(CLK_CTRL_RX_SS_A(1) | CLK_CTRL_RX_SS_B(1), reg_base + CLK_CTRL);
+	write_err_int_sts(dev,  ERR_INT_STS_ALL_CLR);
+	write_err_int_sts_en(dev,  ERR_INT_STS_EN_ALL_EN);
+	write_err_int_sts_sig_en(dev,  ERR_INT_STS_SIG_EN_ALL_EN);
 
-	MXIC_WR32(INT_STS_ALL_CLR, reg_base + INT_STS);
-	MXIC_WR32(INT_STS_EN_ALL_EN, reg_base + INT_STS_EN);
-	MXIC_WR32(INT_STS_SIG_EN_ALL_EN, reg_base + INT_STS_SIG_EN);
+	write_int_sts_en(dev,  INT_STS_DMA_BIT | INT_STS_EN_DMA_TFR_CMPLT_BIT);
 
-	MXIC_WR32(ERR_INT_STS_ALL_CLR, reg_base + ERR_INT_STS);
-	MXIC_WR32(ERR_INT_STS_EN_ALL_EN, reg_base + ERR_INT_STS_EN);
-	MXIC_WR32(ERR_INT_STS_SIG_EN_ALL_EN, reg_base + ERR_INT_STS_SIG_EN);
+#if TEST_MODE
+	write_sample_adj(dev,  SAMPLE_ADJ_DQS_IDLY_DOPI(29) | SAMPLE_ADJ_POINT_SEL_DDR(0) |
+			  SAMPLE_ADJ_POINT_SEL_SDR(2));
 
-	MXIC_WR32(INT_STS_DMA | INT_STS_EN_DMA_TFR_CMPLT, reg_base + INT_STS_EN);
+	write_sio_idly_1(dev,  SIO_IDLY_1_0123(0));
 
-	MXIC_WR32(SAMPLE_ADJ_DQS_IDLY_DOPI(29) | SAMPLE_ADJ_POINT_SEL_DDR(0) |
-			  SAMPLE_ADJ_POINT_SEL_SDR(2), reg_base + SAMPLE_ADJ);
-
-	uefc_version = MXIC_RD32(reg_base + SAMPLE_ADJ);
-	printf("***[%s], [%s], [%04d],uefc_version is %x\r\n", __FILE__, __func__, __LINE__,
-	       uefc_version);
-	MXIC_WR32(SIO_IDLY_1_0123(0), reg_base + SIO_IDLY_1);
-	MXIC_WR32(SIO_IDLY_2_4567(0), reg_base + SIO_IDLY_2);
-
+	write_sio_idly_2(dev,  SIO_IDLY_2_4567(0));
 #endif
 
 	return 0;
@@ -279,56 +235,8 @@ static void mspi_cs_end(const struct device *dev)
 static int mspi_io_mode_xfer(const struct device *dev, void *tx, void *rx, uint32_t len,
 				  uint8_t is_data)
 {
-	// uint32_t nbytes, tmp = 0, ofs = 0;
-	// struct mspi_mxicy_data *data_1 = dev->data;
-
-	// uint8_t data_octal_dtr = is_data && data_1->data_dtr && (8 == data_1->data_buswidth);
-
-	// while (ofs < len) {
-	// 	int ret;
-
-	// 	nbytes = len - ofs;
-	// 	uint32_t data = MSPI_DATA_PATTERN;
-
-	// 	if (nbytes > 4) {
-	// 		nbytes = 4;
-	// 	}
-
-	// 	if (tx) {
-	// 		memcpy(&data, tx + ofs, nbytes);
-	// 		printf("tx data: %08X\r\n", data);
-	// 	}
-
-	// 	if (data_octal_dtr && (nbytes % 2)) {
-	// 		tmp = nbytes;
-	// 		nbytes++;
-	// 	}
-
-	// 	ret = mspi_poll_hc_reg(dev, PRES_STS, PRES_STS_TX_NFULL);
-	// 	if (0 != ret) {
-	// 		return ret;
-	// 	}
-	// 	reg_write(data, dev, TXD(nbytes % 4));
-
-	// 	ret = mspi_poll_hc_reg(dev, PRES_STS, PRES_STS_RX_NEMPT);
-	// 	if (0 != ret) {
-	// 		return ret;
-	// 	}
-
-	// 	data = read_rxd_reg(dev);
-	// 	if (rx) {
-	// 		memcpy(rx + ofs, &data, tmp ? tmp : nbytes);
-	// 	}
-
-	// 	printf("rx data: %08X\r\n", data);
-	// 	ofs += nbytes;
-	// }
-
-	// return 0;
-#if TEST_MODE
 	uint32_t nbytes, tmp = 0, ofs = 0;
 	struct mspi_mxicy_data *data_1 = dev->data;
-	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
 
 	uint8_t data_octal_dtr = is_data && data_1->data_dtr && (8 == data_1->data_buswidth);
 
@@ -336,7 +244,7 @@ static int mspi_io_mode_xfer(const struct device *dev, void *tx, void *rx, uint3
 		int ret;
 
 		nbytes = len - ofs;
-		uint32_t data = 0xffffffff;
+		uint32_t data = MSPI_DATA_PATTERN;
 
 		if (nbytes > 4) {
 			nbytes = 4;
@@ -351,119 +259,32 @@ static int mspi_io_mode_xfer(const struct device *dev, void *tx, void *rx, uint3
 			tmp = nbytes;
 			nbytes++;
 		}
+
 		ret = mspi_poll_hc_reg(dev, PRES_STS, PRES_STS_TX_NFULL);
-		if (EXIT_SUCCESS != ret) {
+		if (0 != ret) {
 			return ret;
 		}
-		mxic_wr32(data, (reg_base + TXD(nbytes % 4)));
+		reg_write(data, dev, TXD(nbytes % 4));
 
 		ret = mspi_poll_hc_reg(dev, PRES_STS, PRES_STS_RX_NEMPT);
-		if (EXIT_SUCCESS != ret) {
+		if (0 != ret) {
 			return ret;
 		}
-		data = MXIC_RD32(reg_base + RXD_REG);
+
+		data = read_rxd_reg(dev);
 		if (rx) {
 			memcpy(rx + ofs, &data, tmp ? tmp : nbytes);
 		}
+
 		printf("rx data: %08X\r\n", data);
 		ofs += nbytes;
 	}
 
-	return EXIT_SUCCESS;
-
-#endif
+	return 0;
 }
 
 static uint32_t mspi_set_line(struct mspi_mxicy_data *data, enum mspi_io_mode io_mode, enum mspi_data_rate data_rate)
 {
-
-// 	uint32_t cmd_bus = 0;
-// 	uint32_t addr_bus = 0;
-// 	uint32_t data_bus = 0;
-
-// 	bool cmd_ddr = false;
-// 	bool addr_ddr = false;
-// 	bool data_ddr = false;
-
-// 	switch (data_rate) {
-// 	case MSPI_DATA_RATE_SINGLE:
-// 		break;
-// 	case MSPI_DATA_RATE_S_S_D:
-// 		data_ddr = true;
-// 		break;
-// 	case MSPI_DATA_RATE_S_D_D:
-// 		addr_ddr = true;
-// 		data_ddr = true;
-// 		break;
-// 	case MSPI_DATA_RATE_DUAL:
-// 		cmd_ddr = addr_ddr = data_ddr = true;
-// 		break;
-// 	default:
-// 		break;
-// 	}
-
-// 	uint8_t cmd_lines = 1;
-// 	uint8_t addr_lines = 1;
-// 	uint8_t data_lines = 1;
-
-// 	switch (io_mode) {
-//     case MSPI_IO_MODE_SINGLE:
-//         break;
-//     case MSPI_IO_MODE_DUAL:
-// 	 	cmd_lines = addr_lines = data_lines = 2;
-//     case MSPI_IO_MODE_DUAL_1_1_2:
-//         data_lines = 2;
-//         break;
-//     case MSPI_IO_MODE_DUAL_1_2_2:
-//         addr_lines = data_lines = 2;
-//         break;
-//     case MSPI_IO_MODE_QUAD:
-// 		cmd_lines = addr_lines = data_lines = 4;
-//     case MSPI_IO_MODE_QUAD_1_4_4:
-//         addr_lines = data_lines = 4;
-//         break;
-//     case MSPI_IO_MODE_QUAD_1_1_4:
-//         data_lines = 4;
-//         break;
-//     case MSPI_IO_MODE_OCTAL:
-// 		cmd_lines = addr_lines = data_lines = 8;
-//     case MSPI_IO_MODE_OCTAL_1_8_8:
-//         addr_lines = data_lines = 8;
-//         break;
-//     case MSPI_IO_MODE_OCTAL_1_1_8:
-//         data_lines = 8;
-//         break;
-
-// 	default:
-// 		break;
-// 	}
-
-// 	cmd_bus = MSPI_LINES_TO_BUSWIDTH(cmd_lines);
-// 	addr_bus = MSPI_LINES_TO_BUSWIDTH(addr_lines);
-// 	data_bus = MSPI_LINES_TO_BUSWIDTH(data_lines);
-
-// 	uint32_t conf = FIELD_PREP(TFR_MODE_CMD_BUSW_MASK, cmd_bus) | (cmd_ddr ? TFR_MODE_CMD_DTR_BIT : 0);
-
-// 	conf |= FIELD_PREP(TFR_MODE_ADDR_BUSW_MASK, addr_bus) | (addr_ddr ? TFR_MODE_ADDR_DTR_BIT : 0);
-
-// 	conf |= FIELD_PREP(TFR_MODE_DATA_BUSW_MASK, data_bus) | (data_ddr ? TFR_MODE_DATA_DTR_BIT : 0);
-
-// 	data->data_buswidth = data_lines;
-// 	data->data_dtr = data_ddr;
-
-// #if TEST_MODE
-// 	uint32_t conf_1 = FIELD_PREP(TFR_MODE_CMD_BUSW_MASK, cmd_bus);
-// 	uint32_t conf_2 = FIELD_PREP(TFR_MODE_ADDR_BUSW_MASK, addr_bus);
-// 	uint32_t conf_3 = FIELD_PREP(TFR_MODE_DATA_BUSW_MASK, data_bus);
-
-// 	printf ("***[%s], [%s], [%04d], cmd_bus is %x, addr_bus is %x, data_bus is %x, \
-// 		conf is %x, cmd_lines is %x, addr_lines is %x, data_lines is %x, \
-// 		cmd_ddr is %x, addr_ddr is %x, data_ddr is %x, conf_1 is %x, conf_2 is %x, conf_3 is %x\
-// 		\r\n", __FILE__, __func__, __LINE__, cmd_bus, addr_bus, data_bus, conf, cmd_lines, \
-// 		addr_lines, data_lines, cmd_ddr, addr_ddr, data_ddr, conf_1, conf_2, conf_3);
-
-// #endif
-#if TEST_MODE
 	uint32_t cmd_bus = 0;
 	uint32_t addr_bus = 0;
 	uint32_t data_bus = 0;
@@ -494,37 +315,60 @@ static uint32_t mspi_set_line(struct mspi_mxicy_data *data, enum mspi_io_mode io
 	uint8_t data_lines = 1;
 
 	switch (io_mode) {
-	case MSPI_IO_MODE_SINGLE:
-		break;
-	case MSPI_IO_MODE_OCTAL:
+    case MSPI_IO_MODE_SINGLE:
+        break;
+    case MSPI_IO_MODE_DUAL:
+	 	cmd_lines = addr_lines = data_lines = 2;
+    case MSPI_IO_MODE_DUAL_1_1_2:
+        data_lines = 2;
+        break;
+    case MSPI_IO_MODE_DUAL_1_2_2:
+        addr_lines = data_lines = 2;
+        break;
+    case MSPI_IO_MODE_QUAD:
+		cmd_lines = addr_lines = data_lines = 4;
+    case MSPI_IO_MODE_QUAD_1_4_4:
+        addr_lines = data_lines = 4;
+        break;
+    case MSPI_IO_MODE_QUAD_1_1_4:
+        data_lines = 4;
+        break;
+    case MSPI_IO_MODE_OCTAL:
 		cmd_lines = addr_lines = data_lines = 8;
-		break;
+    case MSPI_IO_MODE_OCTAL_1_8_8:
+        addr_lines = data_lines = 8;
+        break;
+    case MSPI_IO_MODE_OCTAL_1_1_8:
+        data_lines = 8;
+        break;
+
 	default:
 		break;
 	}
 
-	cmd_bus = cmd_lines == 1 ? 0 : cmd_lines == 2 ? 1 : cmd_lines == 4 ? 2 : 3;
-	addr_bus = addr_lines == 1 ? 0 : addr_lines == 2 ? 1 : addr_lines == 4 ? 2 : 3;
-	data_bus = data_lines == 1 ? 0 : data_lines == 2 ? 1 : data_lines == 4 ? 2 : 3;
+	cmd_bus = MSPI_LINES_TO_BUSWIDTH(cmd_lines);
+	addr_bus = MSPI_LINES_TO_BUSWIDTH(addr_lines);
+	data_bus = MSPI_LINES_TO_BUSWIDTH(data_lines);
 
-	uint32_t conf = OP_CMD_BUSW(cmd_bus) | OP_CMD_DTR(cmd_ddr ? 1 : 0);
-	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
-	printf ("***[%s], [%s], [%04d], cmd_bus is %x\r\n", __FILE__, __func__, __LINE__, cmd_bus);
+	uint32_t conf = FIELD_PREP(TFR_MODE_CMD_BUSW_MASK, cmd_bus) | (cmd_ddr ? TFR_MODE_CMD_DTR_BIT : 0);
 
-	conf |= OP_ADDR_BUSW(addr_bus) |
-		OP_ADDR_DTR(addr_ddr ? 1 : 0);
-	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
-	printf ("***[%s], [%s], [%04d], addr_bus is %x\r\n", __FILE__, __func__, __LINE__, addr_bus);
+	conf |= FIELD_PREP(TFR_MODE_ADDR_BUSW_MASK, addr_bus) | (addr_ddr ? TFR_MODE_ADDR_DTR_BIT : 0);
 
-	conf |= OP_DATA_BUSW(data_bus) | OP_DATA_DTR(data_ddr ? 1 : 0);
-	printf ("***[%s], [%s], [%04d], data_bus is %x\r\n", __FILE__, __func__, __LINE__, data_bus);
+	conf |= FIELD_PREP(TFR_MODE_DATA_BUSW_MASK, data_bus) | (data_ddr ? TFR_MODE_DATA_DTR_BIT : 0);
 
 	data->data_buswidth = data_lines;
 	data->data_dtr = data_ddr;
 
-	printf ("***[%s], [%s], [%04d], data_lines is %x\r\n", __FILE__, __func__, __LINE__, data_lines);
-	printf ("***[%s], [%s], [%04d], data_ddr is %x\r\n", __FILE__, __func__, __LINE__, data_ddr);
-	printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, conf);
+#if TEST_MODE
+	uint32_t conf_1 = FIELD_PREP(TFR_MODE_CMD_BUSW_MASK, cmd_bus);
+	uint32_t conf_2 = FIELD_PREP(TFR_MODE_ADDR_BUSW_MASK, addr_bus);
+	uint32_t conf_3 = FIELD_PREP(TFR_MODE_DATA_BUSW_MASK, data_bus);
+
+	printf ("***[%s], [%s], [%04d], cmd_bus is %x, addr_bus is %x, data_bus is %x, \
+		conf is %x, cmd_lines is %x, addr_lines is %x, data_lines is %x, \
+		cmd_ddr is %x, addr_ddr is %x, data_ddr is %x, conf_1 is %x, conf_2 is %x, conf_3 is %x\
+		\r\n", __FILE__, __func__, __LINE__, cmd_bus, addr_bus, data_bus, conf, cmd_lines, \
+		addr_lines, data_lines, cmd_ddr, addr_ddr, data_ddr, conf_1, conf_2, conf_3);
 
 #endif
 	return conf;
@@ -534,126 +378,18 @@ static int _api_dev_config(const struct device *dev,
 			   const enum mspi_dev_cfg_mask param_mask,
 			   const struct mspi_dev_cfg *cfg)
 {
-// 	printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
+	printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
-// 	struct mspi_mxicy_data *dev_data = dev->data;
-// 	enum mspi_io_mode io_mode = cfg->io_mode;
-// 	struct mspi_mxicy_config *dev_config = dev->config;
-// printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
-
-// 	enum mspi_data_rate data_rate = cfg->data_rate;
-//  	bool dqs_enable = cfg->dqs_enable;	
-// 	uint32_t freq = cfg->freq;
-// 	int ret = 0;
-// printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
-
-// 	if (param_mask & MSPI_DEVICE_CONFIG_ENDIAN) {
-// 		if (cfg->endian != MSPI_XFER_BIG_ENDIAN) {
-// 			LOG_ERR("Only big endian transfers are supported.");
-// 			return -ENOTSUP;
-// 		}
-// 	}
-// printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
-
-// 	if (param_mask & MSPI_DEVICE_CONFIG_CE_POL) {
-// 		if (cfg->ce_polarity != MSPI_CE_ACTIVE_LOW) {
-// 			LOG_ERR("Only active low CE is supported.");
-// 			return -ENOTSUP;
-// 		}
-// 	}
-// printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
-
-// 	if (param_mask & MSPI_DEVICE_CONFIG_MEM_BOUND) {
-// 		if (cfg->mem_boundary) {
-// 			LOG_ERR("Auto CE break is not supported.");
-// 			return -ENOTSUP;
-// 		}
-// 	}
-// printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
-// 	if (param_mask & MSPI_DEVICE_CONFIG_BREAK_TIME) {
-// 		if (cfg->time_to_break) {
-// 			LOG_ERR("Auto CE break is not supported.");
-// 			return -ENOTSUP;
-// 		}
-// 	}
-
-// 	if (param_mask & MSPI_DEVICE_CONFIG_CPP) {
-// 		if (cfg->cpp) {
-// 			LOG_ERR("Only SPI mode 0 is supported.");
-// 			return -ENOTSUP;
-// 		}
-// 	}
-// printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
-// 	if (param_mask & MSPI_DEVICE_CONFIG_IO_MODE ||
-// 		(param_mask & MSPI_DEVICE_CONFIG_DATA_RATE)
-// 	) {
-// #if defined(CONFIG_MSPI_XIP)
-// 		dev_data->xip_params_stored.io_mode = cfg->io_mode;
-// 		dev_data->xip_params_stored.data_rate = cfg->data_rate;
-// #endif
-// 		uint32_t conf = mspi_set_line(dev_data, io_mode, data_rate);
-// 		write_tfr_mode(dev, conf);
-// 	}
-// printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
-// 	if (param_mask & MSPI_DEVICE_CONFIG_FREQUENCY) {
-// #if defined(CONFIG_MSPI_XIP)
-// 		/* Make sure the new setting is compatible with the one used
-// 		 * for XIP if it is enabled.
-// 		 */
-// 		if (!dev_data->xip_enabled) {
-// 			dev_data->xip_freq = cfg->freq;
-// 		} else if (dev_data->xip_freq != cfg->freq) {
-// 			LOG_ERR("Conflict with configuration used for XIP.");
-// 			return -EINVAL;
-// 		}
-// #endif
-// #if !TEST_MODE
-// 		// uint8_t div = dev_config->clock_frequency / cfg->freq;
-// 		// update_dev_ctrl(dev, DEV_CTRL_TYPE_MASK | DEV_CTRL_SCLK_SEL_MASK,
-// 		// 		DEV_CTRL_TYPE_SPI | DEV_CTRL_SCLK_SEL_DIV(div));
-// #endif
-// 	}
-// printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
-// 	if (param_mask & MSPI_DEVICE_CONFIG_DQS) {
-// 		if (cfg->dqs_enable) {
-// 			printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
-// 			update_dev_ctrl(dev, DEV_CTRL_DQS_EN, cfg->dqs_enable ? DEV_CTRL_DQS_EN : 0);	
-// 			// update_hc_ctrl(dev, HC_CTRL_DATA_ORDER, cfg->dqs_enable ? HC_CTRL_DATA_ORDER : 0);
-// 		}
-// 	}
-// printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
-// #if defined(CONFIG_MSPI_XIP)
-// 	if (param_mask & MSPI_DEVICE_CONFIG_READ_CMD) {
-// 		dev_data->xip_params_stored.read_cmd = cfg->read_cmd;
-// 	}
-// 	if (param_mask & MSPI_DEVICE_CONFIG_WRITE_CMD) {
-// 		dev_data->xip_params_stored.write_cmd = cfg->write_cmd;
-// 	}
-// 	if (param_mask & MSPI_DEVICE_CONFIG_RX_DUMMY) {
-// 		dev_data->xip_params_stored.rx_dummy = cfg->rx_dummy;
-// 	}
-// 	if (param_mask & MSPI_DEVICE_CONFIG_TX_DUMMY) {
-// 		dev_data->xip_params_stored.tx_dummy = cfg->tx_dummy;
-// 	}
-// 	if (param_mask & MSPI_DEVICE_CONFIG_CMD_LEN) {
-// 		dev_data->xip_params_stored.cmd_length = cfg->cmd_length;
-// 	}
-// 	if (param_mask & MSPI_DEVICE_CONFIG_ADDR_LEN) {
-// 		dev_data->xip_params_stored.addr_length = cfg->addr_length;
-// 	}
-// #endif
-// printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
-
-// 	return ret;
-#if TEST_MODE
-	struct mspi_mxicy_data *data = dev->data;
+	struct mspi_mxicy_data *dev_data = dev->data;
 	enum mspi_io_mode io_mode = cfg->io_mode;
+	struct mspi_mxicy_config *dev_config = dev->config;
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
+
 	enum mspi_data_rate data_rate = cfg->data_rate;
  	bool dqs_enable = cfg->dqs_enable;	
 	uint32_t freq = cfg->freq;
-	uintptr_t reg_base = DEVICE_MMIO_GET(dev);
 	int ret = 0;
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
 	if (param_mask & MSPI_DEVICE_CONFIG_ENDIAN) {
 		if (cfg->endian != MSPI_XFER_BIG_ENDIAN) {
@@ -661,7 +397,7 @@ printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 			return -ENOTSUP;
 		}
 	}
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
 	if (param_mask & MSPI_DEVICE_CONFIG_CE_POL) {
 		if (cfg->ce_polarity != MSPI_CE_ACTIVE_LOW) {
@@ -669,7 +405,7 @@ printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 			return -ENOTSUP;
 		}
 	}
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
 	if (param_mask & MSPI_DEVICE_CONFIG_MEM_BOUND) {
 		if (cfg->mem_boundary) {
@@ -677,15 +413,13 @@ printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 			return -ENOTSUP;
 		}
 	}
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 	if (param_mask & MSPI_DEVICE_CONFIG_BREAK_TIME) {
 		if (cfg->time_to_break) {
 			LOG_ERR("Auto CE break is not supported.");
 			return -ENOTSUP;
 		}
 	}
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	if (param_mask & MSPI_DEVICE_CONFIG_CPP) {
 		if (cfg->cpp) {
@@ -693,69 +427,68 @@ printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 			return -ENOTSUP;
 		}
 	}
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 	if (param_mask & MSPI_DEVICE_CONFIG_IO_MODE ||
 		(param_mask & MSPI_DEVICE_CONFIG_DATA_RATE)
 	) {
 #if defined(CONFIG_MSPI_XIP)
-		// dev_data->xip_params_stored.io_mode = cfg->io_mode;
+		dev_data->xip_params_stored.io_mode = cfg->io_mode;
+		dev_data->xip_params_stored.data_rate = cfg->data_rate;
 #endif
-		uint32_t conf = mspi_set_line(data, io_mode, data_rate);
-
-		MXIC_WR32(conf, reg_base + TFR_MODE);
+		uint32_t conf = mspi_set_line(dev_data, io_mode, data_rate);
+		write_tfr_mode(dev, conf);
 	}
-
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 	if (param_mask & MSPI_DEVICE_CONFIG_FREQUENCY) {
 #if defined(CONFIG_MSPI_XIP)
 		/* Make sure the new setting is compatible with the one used
 		 * for XIP if it is enabled.
 		 */
-		// if (!dev_data->xip_enabled) {
-		// 	dev_data->xip_freq = cfg->freq;
-		// } else if (dev_data->xip_freq != cfg->freq) {
-		// 	LOG_ERR("Conflict with configuration used for XIP.");
-		// 	return -EINVAL;
-		// }
+		if (!dev_data->xip_enabled) {
+			dev_data->xip_freq = cfg->freq;
+		} else if (dev_data->xip_freq != cfg->freq) {
+			LOG_ERR("Conflict with configuration used for XIP.");
+			return -EINVAL;
+		}
 #endif
-		// // uint8_t div = dev_config->clock_frequency / cfg->freq;
-		// uint8_t div = 4;
-		// UPDATE_WRITE(DEV_CTRL_TYPE_MASK | DEV_CTRL_SCLK_SEL_MASK,
-		// 		DEV_CTRL_TYPE_SPI | DEV_CTRL_SCLK_SEL_DIV(div), reg_base + DEV_CTRL);
+#if !TEST_MODE
+		// uint8_t div = dev_config->clock_frequency / cfg->freq;
+		// update_dev_ctrl(dev, DEV_CTRL_TYPE_MASK | DEV_CTRL_SCLK_SEL_MASK,
+		// 		DEV_CTRL_TYPE_SPI | DEV_CTRL_SCLK_SEL_DIV(div));
+#endif
 	}
-
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 	if (param_mask & MSPI_DEVICE_CONFIG_DQS) {
 		if (cfg->dqs_enable) {
-			UPDATE_WRITE(DEV_CTRL_DQS_EN, cfg->dqs_enable ? DEV_CTRL_DQS_EN : 0, reg_base + DEV_CTRL);
-			UPDATE_WRITE(HC_CTRL_DATA_ORDER, cfg->dqs_enable ? HC_CTRL_DATA_ORDER : 0, reg_base + HC_CTRL);
+			printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
+			update_dev_ctrl(dev, DEV_CTRL_DQS_EN, cfg->dqs_enable ? DEV_CTRL_DQS_EN : 0);	
+			// update_hc_ctrl(dev, HC_CTRL_DATA_ORDER, cfg->dqs_enable ? HC_CTRL_DATA_ORDER : 0);
 		}
 	}
-printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 #if defined(CONFIG_MSPI_XIP)
-	// if (param_mask & MSPI_DEVICE_CONFIG_READ_CMD) {
-	// 	dev_data->xip_params_stored.read_cmd = cfg->read_cmd;
-	// }
-	// if (param_mask & MSPI_DEVICE_CONFIG_WRITE_CMD) {
-	// 	dev_data->xip_params_stored.write_cmd = cfg->write_cmd;
-	// }
-	// if (param_mask & MSPI_DEVICE_CONFIG_RX_DUMMY) {
-	// 	dev_data->xip_params_stored.rx_dummy = cfg->rx_dummy;
-	// }
-	// if (param_mask & MSPI_DEVICE_CONFIG_TX_DUMMY) {
-	// 	dev_data->xip_params_stored.tx_dummy = cfg->tx_dummy;
-	// }
-	// if (param_mask & MSPI_DEVICE_CONFIG_CMD_LEN) {
-	// 	dev_data->xip_params_stored.cmd_length = cfg->cmd_length;
-	// }
-	// if (param_mask & MSPI_DEVICE_CONFIG_ADDR_LEN) {
-	// 	dev_data->xip_params_stored.addr_length = cfg->addr_length;
-	// }
+	if (param_mask & MSPI_DEVICE_CONFIG_READ_CMD) {
+		dev_data->xip_params_stored.read_cmd = cfg->read_cmd;
+	}
+	if (param_mask & MSPI_DEVICE_CONFIG_WRITE_CMD) {
+		dev_data->xip_params_stored.write_cmd = cfg->write_cmd;
+	}
+	if (param_mask & MSPI_DEVICE_CONFIG_RX_DUMMY) {
+		dev_data->xip_params_stored.rx_dummy = cfg->rx_dummy;
+	}
+	if (param_mask & MSPI_DEVICE_CONFIG_TX_DUMMY) {
+		dev_data->xip_params_stored.tx_dummy = cfg->tx_dummy;
+	}
+	if (param_mask & MSPI_DEVICE_CONFIG_CMD_LEN) {
+		dev_data->xip_params_stored.cmd_length = cfg->cmd_length;
+	}
+	if (param_mask & MSPI_DEVICE_CONFIG_ADDR_LEN) {
+		dev_data->xip_params_stored.addr_length = cfg->addr_length;
+	}
 #endif
+printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
 	return ret;
-
-#endif
 }
 
 static int api_dev_config(const struct device *dev,
@@ -931,162 +664,74 @@ static int mspi_pio_prepare(const struct device *dev, struct mspi_xfer *xfer)
 
 static int mspi_pio_transceive(const struct device *dev, const struct mspi_xfer *xfer)
 {
-// 	const struct mspi_mxicy_config *cfg = dev->config;
-// 	struct mspi_mxicy_data *data = dev->data;
-// 	const struct mspi_xfer_packet *packet;
-// 	int ret = 0;
-
-// 	if (data->dev_id) {
-// 		update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, HC_CTRL_CH_LUN_PORT(A, 0, data->dev_id->dev_idx));
-// 	}
-// 	mspi_cs_start(dev);
-
-// 	/* Set up command  */
-// 	if (xfer->cmd_length != 0) {
-// 		uint32_t cmd = (xfer->cmd_length == MSPI_2BYTE_CMD ? BSWAP_16(xfer->packets->cmd) : xfer->packets->cmd);
-
-// 		ret = mspi_io_mode_xfer(dev, (uint8_t *)&cmd, 0,
-// 					     xfer->cmd_length, 0);
-
-// 		if (0 != ret) {
-// 			mspi_cs_end(dev);
-// 			return ret;
-// 		}
-// 	}
-// 	/* Set up address */
-// 	if (xfer->addr_length != 0) {
-// 		uint32_t addr = (xfer->addr_length == MSPI_4BYTE_ADDR ? BSWAP_32(xfer->packets->address) : BSWAP_24(xfer->packets->address));
-
-// 		ret = mspi_io_mode_xfer(dev, (uint8_t *)&addr, 0,
-// 					     xfer->addr_length, 0);
-
-// 		if (0 != ret) {
-// 			mspi_cs_end(dev);
-// 		}
-// 	}
-// 	uint32_t dummy_length = (MSPI_TX == xfer->packets->dir) ? xfer->tx_dummy : xfer->rx_dummy;
-
-// 	/* Setup dummy: dummy's bus width and DTR are determined by the data */
-// 	if (dummy_length != 0) {
-// 		uint32_t dummy_len =
-// 			(dummy_length * (data->data_dtr + 1)) / (8 / (data->data_buswidth));
-
-// 		ret = mspi_io_mode_xfer(dev, 0, 0, dummy_len, 0);
-// 		if (0 != ret) {
-// 			mspi_cs_end(dev);
-// 			return ret;
-// 		}
-// 	}
-
-// 	/* Set up read/write Data */
-// 	if (xfer->packets->data_buf != NULL) {
-
-// 		ret = mspi_io_mode_xfer(
-// 			dev, MSPI_TX == xfer->packets->dir ? xfer->packets->data_buf : 0,
-// 			MSPI_RX == xfer->packets->dir ? xfer->packets->data_buf : 0,
-// 			xfer->packets->num_bytes, 1);
-
-// 		if (0 != ret) {
-// 			mspi_cs_end(dev);
-// 			return ret;
-// 		}
-// 	}
-
-// 	mspi_cs_end(dev);
-
-
-// #if TEST_MODE
-// 	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
-// #endif
-
-// 	return ret;
-#if TEST_MODE
 	const struct mspi_mxicy_config *cfg = dev->config;
 	struct mspi_mxicy_data *data = dev->data;
 	const struct mspi_xfer_packet *packet;
-	uint32_t packet_idx;
 	int ret = 0;
 
-	mspi_pio_prepare(dev, xfer);
-
+	if (data->dev_id) {
+		update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, HC_CTRL_CH_LUN_PORT(A, 0, data->dev_id->dev_idx));
+	}
 	mspi_cs_start(dev);
 
 	/* Set up command  */
-	if (xfer->cmd_length) {
-		uint32_t cmd = swap32(xfer->packets->cmd,  xfer->cmd_length);
-				printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+	if (xfer->cmd_length != 0) {
+		uint32_t cmd = (xfer->cmd_length == MSPI_2BYTE_CMD ? BSWAP_16(xfer->packets->cmd) : xfer->packets->cmd);
 
 		ret = mspi_io_mode_xfer(dev, (uint8_t *)&cmd, 0,
 					     xfer->cmd_length, 0);
 
-		if (EXIT_SUCCESS != ret) {
+		if (0 != ret) {
 			mspi_cs_end(dev);
 			return ret;
 		}
 	}
-
 	/* Set up address */
-	if (xfer->addr_length) {
-		uint32_t addr = swap32(xfer->packets->address,  xfer->addr_length);
-		printf("***[%s], [%s], [%04d], xfer->addr_length is %x\r\n", __FILE__, __func__, __LINE__, xfer->addr_length);
+	if (xfer->addr_length != 0) {
+		uint32_t addr = (xfer->addr_length == MSPI_4BYTE_ADDR ? BSWAP_32(xfer->packets->address) : BSWAP_24(xfer->packets->address));
 
 		ret = mspi_io_mode_xfer(dev, (uint8_t *)&addr, 0,
 					     xfer->addr_length, 0);
 
-
-		if (EXIT_SUCCESS != ret) {
+		if (0 != ret) {
 			mspi_cs_end(dev);
 		}
 	}
-		printf("***[%s], [%s], [%04d], xfer->rx_dummy is %x\r\n", __FILE__, __func__, __LINE__, xfer->rx_dummy);
-		printf("***[%s], [%s], [%04d], xfer->tx_dummy is %x\r\n", __FILE__, __func__, __LINE__, xfer->tx_dummy);
-
 	uint32_t dummy_length = (MSPI_TX == xfer->packets->dir) ? xfer->tx_dummy : xfer->rx_dummy;
 
 	/* Setup dummy: dummy's bus width and DTR are determined by the data */
-	if (dummy_length) {
+	if (dummy_length != 0) {
 		uint32_t dummy_len =
 			(dummy_length * (data->data_dtr + 1)) / (8 / (data->data_buswidth));
-					printf("***[%s], [%s], [%04d], dummy_length is %x\r\n", __FILE__, __func__, __LINE__, dummy_length);
-		printf("***[%s], [%s], [%04d], data->data_buswidth is %x\r\n", __FILE__, __func__, __LINE__, data->data_buswidth);
-
-		printf("***[%s], [%s], [%04d], data->data_buswidth is %x\r\n", __FILE__, __func__, __LINE__, data->data_buswidth);
-
-		printf("***[%s], [%s], [%04d], dummy_len is %x\r\n", __FILE__, __func__, __LINE__, dummy_len);
 
 		ret = mspi_io_mode_xfer(dev, 0, 0, dummy_len, 0);
-		if (EXIT_SUCCESS != ret) {
+		if (0 != ret) {
 			mspi_cs_end(dev);
 			return ret;
 		}
 	}
-	printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
 
 	/* Set up read/write Data */
-	if (xfer->packets->data_buf) {
-		printf("***[%s], [%s], [%04d], xfer->packets->data_buf is %x\r\n", __FILE__,
-		       __func__, __LINE__, xfer->packets->data_buf[0]);
+	if (xfer->packets->data_buf != NULL) {
 
 		ret = mspi_io_mode_xfer(
 			dev, MSPI_TX == xfer->packets->dir ? xfer->packets->data_buf : 0,
 			MSPI_RX == xfer->packets->dir ? xfer->packets->data_buf : 0,
 			xfer->packets->num_bytes, 1);
 
-		printf("***[%s], [%s], [%04d], xfer->packets->data_buf is %x\r\n", __FILE__,
-		       __func__, __LINE__, xfer->packets->data_buf[0]);
-
-		if (EXIT_SUCCESS != ret) {
+		if (0 != ret) {
 			mspi_cs_end(dev);
 			return ret;
 		}
 	}
 
 	mspi_cs_end(dev);
-	printf("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+
+#if TEST_MODE
+	printf ("***[%s], [%s], [%04d], \r\n", __FILE__, __func__, __LINE__);
+#endif
 
 	return ret;
-
-#endif
 }
 
 static int mspi_dma_transceive(const struct device *dev,

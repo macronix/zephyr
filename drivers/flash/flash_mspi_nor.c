@@ -20,12 +20,12 @@ LOG_MODULE_REGISTER(flash_mspi_nor, CONFIG_FLASH_LOG_LEVEL);
 
 #define READ_ID_FORCE_SINGLE 1
 #define IO_MODE 1
-#define IO_MODE_DMA 0
+#define IO_MODE_DMA 1
 #define DOPI_MODE 1
 #define OCTA_MODE 1
 #define XIP_MODE 0
-#define DMA_MODE_RD 0
-#define DMA_MODE_WR 0
+#define DMA_MODE_RD 1
+#define DMA_MODE_WR 1
 #define TEST_MODE 1
 
 void flash_mspi_command_set(const struct device *dev, const struct flash_mspi_nor_cmd *cmd)
@@ -186,7 +186,7 @@ printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 	if (IS_ENABLED (DMA_MODE_RD)) {
 		memset (dma_buf , 0x00, 32);
 		for (int i = 0; i < 32; i++) {
-			printf ("***[%s], [%s], [%04d], dma_buf is %x\r\n", __FILE__, __func__, __LINE__, dma_buf[i]);
+			// printf ("***[%s], [%s], [%04d], dma_buf is %x\r\n", __FILE__, __func__, __LINE__, dma_buf[i]);
 		}
 	}
 
@@ -199,7 +199,7 @@ printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
 
 	dev_data->packet.address   = addr;
-	dev_data->packet.data_buf  = DMA_MODE_RD == 1 ? dma_buf : dest;
+	dev_data->packet.data_buf  = DMA_MODE_RD == 1 ? dest : dest;
 	dev_data->packet.num_bytes = size;
 	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
 			     &dev_data->xfer);
@@ -614,12 +614,43 @@ static int default_io_mode(const struct device *dev)
 			// }	
 		}
 	} else if (IS_ENABLED (XIP_MODE)) {
+		rc = dev_cfg_apply(dev, &mspi_dev_cfg_xip);
+		printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
+
+		flash_mspi_command_set(dev, &commands_single.write_en);
+
+		rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+					&dev_data->xfer);
+
+		flash_mspi_command_set(dev, &commands_single.page_program);
+
+		dev_data->packet.data_buf  = buf_wr;
+		dev_data->packet.address  = 0;
+		dev_data->packet.num_bytes = 32;
+		rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+					&dev_data->xfer);
+
+		rc = wait_until_ready(dev, K_MSEC(1));
+
+		flash_mspi_command_set(dev, &commands_single.read);
+
+		dev_data->packet.data_buf  = buf;
+		dev_data->packet.address  = 0;
+		dev_data->packet.num_bytes = 32;
+		rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+					&dev_data->xfer);
+
+		for (int i = 0; i < 32; i++) {
+			printf ("***[%s], [%s], [%04d], buf is %x\r\n", __FILE__, __func__, __LINE__, buf[i]);
+		}
+
 		if (IS_ENABLED (OCTA_MODE)) {
 			rc = dev_cfg_apply(dev, &mspi_dev_cfg_xip);
 			rc = octal_enable_set(dev);
 		}
 
-		rc = dev_cfg_apply(dev, (OCTA_MODE ? &mspi_dev_cfg_octal : &mspi_dev_cfg_xip));
+		// rc = dev_cfg_apply(dev, (OCTA_MODE ? &mspi_dev_cfg_octal : &mspi_dev_cfg_xip));
+		rc = dev_cfg_apply(dev, &mspi_dev_cfg_octal);
 		rc = mspi_xip_config(dev_config->bus, &dev_config->mspi_id,
 			&mspi_xip_cfg);
 		memcpy(buf, 0x60000000, 32);
