@@ -25,7 +25,7 @@
 
 #define SPI_FLASH_MULTI_SECTOR_TEST
 
-#define SIGLE_SECTOR_TEST_ENABLE 1
+#define SIGLE_SECTOR_TEST_ENABLE 0
 #define DMA_MODE 1
 
 int single_sector_test(const struct device *flash_dev)

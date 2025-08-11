@@ -149,7 +149,7 @@ static int dev_init(const struct device *dev)
 	update_hc_ctrl(dev, HC_CTRL_CH_LUN_PORT_MASK, UEFC_CH_LUN_PORT);
 
 	update_dev_ctrl(dev, DEV_CTRL_TYPE_MASK | DEV_CTRL_SCLK_SEL_MASK,
-		     DEV_CTRL_TYPE_SPI | DEV_CTRL_SCLK_SEL_DIV(2));
+		     DEV_CTRL_TYPE_SPI | DEV_CTRL_SCLK_SEL_DIV(4));
 
 	update_hc_ctrl(dev, HC_CTRL_SIO_SHIFTER(3), HC_CTRL_SIO_SHIFTER(3));
 
@@ -579,6 +579,9 @@ static int _api_xip_config(const struct device *dev,
 		conf = read_map_cmd (dev);
 		printf ("***[%s], [%s], [%04d], conf is %x, addr_length is %x, FIELD_PREP is %X\r\n", __FILE__, __func__, __LINE__, \
 			conf, params->addr_length, FIELD_PREP(TFR_MODE_ADDR_CNT_MASK, params->addr_length));
+		conf = read_map_wr_ctrl(dev);
+		printf ("***[%s], [%s], [%04d], conf is %x\r\n", __FILE__, __func__, __LINE__, \
+			conf);
 #endif
 	} else if (dev_data->xip_params_active.read_cmd !=
 		   dev_data->xip_params_stored.read_cmd ||

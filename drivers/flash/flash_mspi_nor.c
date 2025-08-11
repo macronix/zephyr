@@ -19,62 +19,21 @@
 LOG_MODULE_REGISTER(flash_mspi_nor, CONFIG_FLASH_LOG_LEVEL);
 
 #define READ_ID_FORCE_SINGLE 1
-#define IO_MODE 1
-#define IO_MODE_DMA 1
-#define DOPI_MODE 1
-#define OCTA_MODE 1
-#define XIP_MODE 0
-#define DMA_MODE_RD 1
-#define DMA_MODE_WR 1
+#define IO_MODE 0
+#define IO_MODE_DMA 0
+#define DOPI_MODE 0
+#define OCTA_MODE 0
+#define XIP_MODE 1
+#define DMA_MODE_RD 0
+#define DMA_MODE_WR 0
 #define TEST_MODE 1
 
-void flash_mspi_command_set(const struct device *dev, const struct flash_mspi_nor_cmd *cmd)
-{
-	struct flash_mspi_nor_data *dev_data = dev->data;
-	const struct flash_mspi_nor_config *dev_config = dev->config;
-
-	memset(&dev_data->xfer, 0, sizeof(dev_data->xfer));
-	memset(&dev_data->packet, 0, sizeof(dev_data->packet));
-
-	dev_data->xfer.xfer_mode  = MSPI_PIO;
-	dev_data->xfer.packets    = &dev_data->packet;
-	dev_data->xfer.num_packet = 1;
-	dev_data->xfer.timeout    = 10;
-
-	dev_data->xfer.cmd_length = cmd->cmd_length;
-	dev_data->xfer.addr_length = cmd->addr_length;
-	dev_data->xfer.tx_dummy = (cmd->dir == MSPI_TX) ?
-				  cmd->tx_dummy : dev_config->mspi_nor_cfg.tx_dummy;
-	dev_data->xfer.rx_dummy = (cmd->dir == MSPI_RX) ?
-				  cmd->rx_dummy : dev_config->mspi_nor_cfg.rx_dummy;
-
-	dev_data->packet.dir = cmd->dir;
-	dev_data->packet.cmd = cmd->cmd;
-}
-
-void flash_mspi_command_set_dma(const struct device *dev, const struct flash_mspi_nor_cmd *cmd)
-{
-	struct flash_mspi_nor_data *dev_data = dev->data;
-	const struct flash_mspi_nor_config *dev_config = dev->config;
-
-	memset(&dev_data->xfer, 0, sizeof(dev_data->xfer));
-	memset(&dev_data->packet, 0, sizeof(dev_data->packet));
-
-	dev_data->xfer.xfer_mode  = MSPI_DMA;
-	dev_data->xfer.packets    = &dev_data->packet;
-	dev_data->xfer.num_packet = 1;
-	dev_data->xfer.timeout    = 10;
-
-	dev_data->xfer.cmd_length = cmd->cmd_length;
-	dev_data->xfer.addr_length = cmd->addr_length;
-	dev_data->xfer.tx_dummy = (cmd->dir == MSPI_TX) ?
-				  cmd->tx_dummy : dev_config->mspi_nor_cfg.tx_dummy;
-	dev_data->xfer.rx_dummy = (cmd->dir == MSPI_RX) ?
-				  cmd->rx_dummy : dev_config->mspi_nor_cfg.rx_dummy;
-
-	dev_data->packet.dir = cmd->dir;
-	dev_data->packet.cmd = cmd->cmd;
-}
+static int single_wr_rd_for_test (const struct device *dev, uint8_t * buf_wr);
+static int single_erase_rd_for_test (const struct device *dev);
+static inline uint32_t dev_flash_size(const struct device *dev);
+static inline uint16_t dev_page_size(const struct device *dev);
+static int single_rd_for_test (const struct device *dev);
+static int single_wr_en(const struct device *dev);
 
 static int dev_cfg_apply(const struct device *dev, const struct mspi_dev_cfg *cfg)
 {
@@ -135,17 +94,7 @@ static void release(const struct device *dev)
 	k_sem_give(&dev_data->acquired);
 }
 
-static inline uint32_t dev_flash_size(const struct device *dev)
-{
-	const struct flash_mspi_nor_config *dev_config = dev->config;
 
-	return dev_config->flash_size;
-}
-
-static inline uint16_t dev_page_size(const struct device *dev)
-{
-	return SPI_NOR_PAGE_SIZE;
-}
 
 static int api_read(const struct device *dev, off_t addr, void *dest,
 		    size_t size)
@@ -567,35 +516,7 @@ static int default_io_mode(const struct device *dev)
 
 	if (IS_ENABLED (IO_MODE)) {
 		printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
-		rc = dev_cfg_apply(dev, &mspi_dev_cfg_xip);
-		printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
-
-		flash_mspi_command_set(dev, &commands_single.write_en);
-
-		rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
-					&dev_data->xfer);
-
-		flash_mspi_command_set(dev, &commands_single.page_program);
-
-		dev_data->packet.data_buf  = buf_wr;
-		dev_data->packet.address  = 0;
-		dev_data->packet.num_bytes = 32;
-		rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
-					&dev_data->xfer);
-
-		rc = wait_until_ready(dev, K_MSEC(1));
-
-		flash_mspi_command_set(dev, &commands_single.read);
-
-		dev_data->packet.data_buf  = buf;
-		dev_data->packet.address  = 0;
-		dev_data->packet.num_bytes = 32;
-		rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
-					&dev_data->xfer);
-
-		for (int i = 0; i < 32; i++) {
-			printf ("***[%s], [%s], [%04d], buf is %x\r\n", __FILE__, __func__, __LINE__, buf[i]);
-		}
+		single_wr_rd_for_test (dev, buf_wr);
 
 		if (IS_ENABLED (OCTA_MODE)) {
 			memset (buf , 0x00, 32);
@@ -614,46 +535,27 @@ static int default_io_mode(const struct device *dev)
 			// }	
 		}
 	} else if (IS_ENABLED (XIP_MODE)) {
-		rc = dev_cfg_apply(dev, &mspi_dev_cfg_xip);
-		printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
-
-		flash_mspi_command_set(dev, &commands_single.write_en);
-
-		rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
-					&dev_data->xfer);
-
-		flash_mspi_command_set(dev, &commands_single.page_program);
-
-		dev_data->packet.data_buf  = buf_wr;
-		dev_data->packet.address  = 0;
-		dev_data->packet.num_bytes = 32;
-		rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
-					&dev_data->xfer);
-
-		rc = wait_until_ready(dev, K_MSEC(1));
-
-		flash_mspi_command_set(dev, &commands_single.read);
-
-		dev_data->packet.data_buf  = buf;
-		dev_data->packet.address  = 0;
-		dev_data->packet.num_bytes = 32;
-		rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
-					&dev_data->xfer);
-
-		for (int i = 0; i < 32; i++) {
-			printf ("***[%s], [%s], [%04d], buf is %x\r\n", __FILE__, __func__, __LINE__, buf[i]);
-		}
-
-		if (IS_ENABLED (OCTA_MODE)) {
+		// single_erase_rd_for_test (dev);
+		
+		if (IS_ENABLED (OCTA_MODE)) {	
 			rc = dev_cfg_apply(dev, &mspi_dev_cfg_xip);
 			rc = octal_enable_set(dev);
 		}
 
 		// rc = dev_cfg_apply(dev, (OCTA_MODE ? &mspi_dev_cfg_octal : &mspi_dev_cfg_xip));
-		rc = dev_cfg_apply(dev, &mspi_dev_cfg_octal);
+		rc = dev_cfg_apply(dev, &mspi_dev_cfg_xip);
+
+		single_wr_en(dev);
+
+		//Once XIP mode enabled, do not operate back to IO mode again.
 		rc = mspi_xip_config(dev_config->bus, &dev_config->mspi_id,
 			&mspi_xip_cfg);
-		memcpy(buf, 0x60000000, 32);
+
+		// memcpy(buf, 0x60000000, 32);
+		memcpy(0x60000000, buf_wr, 32);
+
+		// single_rd_for_test(dev);
+
 		for (int i = 0; i < 32; i++) {
 			printf ("***[%s], [%s], [%04d], buf is %x\r\n", __FILE__, __func__, __LINE__, buf[i]);
 		}
@@ -773,6 +675,171 @@ static int drv_init(const struct device *dev)
 	return 0;
 }
 
+static int single_wr_en(const struct device *dev)
+{
+	int rc = 0;
+
+	const struct flash_mspi_nor_config *dev_config = dev->config;
+	struct flash_mspi_nor_data *dev_data = dev->data;
+	rc = dev_cfg_apply(dev, &mspi_dev_cfg_xip);
+
+	flash_mspi_command_set(dev, &commands_single.write_en);
+
+	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+				&dev_data->xfer);
+	rc = wait_until_ready(dev, K_MSEC(1));
+}
+
+static int single_wr_rd_for_test (const struct device *dev, uint8_t * buf_wr)
+{
+	int rc = 0;
+	uint8_t *buf_rd = (uint8_t *)k_malloc(0x1000);
+	memset (buf_rd , 0x00, 32);
+
+	const struct flash_mspi_nor_config *dev_config = dev->config;
+	struct flash_mspi_nor_data *dev_data = dev->data;
+	rc = dev_cfg_apply(dev, &mspi_dev_cfg_xip);
+
+	printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
+
+	flash_mspi_command_set(dev, &commands_single.write_en);
+
+	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+				&dev_data->xfer);
+
+	flash_mspi_command_set(dev, &commands_single.page_program);
+
+	dev_data->packet.data_buf  = buf_wr;
+	dev_data->packet.address  = 0;
+	dev_data->packet.num_bytes = 32;
+	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+				&dev_data->xfer);
+
+	rc = wait_until_ready(dev, K_MSEC(1));
+
+	flash_mspi_command_set(dev, &commands_single.read);
+
+	dev_data->packet.data_buf  = buf_rd;
+	dev_data->packet.address  = 0;
+	dev_data->packet.num_bytes = 32;
+	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+				&dev_data->xfer);
+
+	for (int i = 0; i < 32; i++) {
+		printf ("***[%s], [%s], [%04d], buf_rd is %x\r\n", __FILE__, __func__, __LINE__, buf_rd[i]);
+	}
+}
+
+static int single_erase_rd_for_test (const struct device *dev)
+{
+	int rc = 0;
+	uint8_t *buf_rd = (uint8_t *)k_malloc(0x1000);
+	memset (buf_rd , 0x00, 32);
+
+	const struct flash_mspi_nor_config *dev_config = dev->config;
+	struct flash_mspi_nor_data *dev_data = dev->data;
+	rc = dev_cfg_apply(dev, &mspi_dev_cfg_xip);
+
+	printf ("***[%s], [%s], [%04d],\r\n", __FILE__, __func__, __LINE__);
+
+	flash_mspi_command_set(dev, &commands_single.write_en);
+
+	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+				&dev_data->xfer);
+
+	flash_mspi_command_set(dev, &commands_single.sector_erase);
+
+	dev_data->packet.address  = 0;
+	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+				&dev_data->xfer);
+
+	rc = wait_until_ready(dev, K_MSEC(1));
+
+	flash_mspi_command_set(dev, &commands_single.read);
+
+	dev_data->packet.data_buf  = buf_rd;
+	dev_data->packet.address  = 0;
+	dev_data->packet.num_bytes = 32;
+	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+				&dev_data->xfer);
+
+	for (int i = 0; i < 32; i++) {
+		printf ("***[%s], [%s], [%04d], buf_rd is %x\r\n", __FILE__, __func__, __LINE__, buf_rd[i]);
+	}
+}
+
+static int single_rd_for_test (const struct device *dev)
+{
+	int rc = 0;
+	uint8_t *buf_rd = (uint8_t *)k_malloc(0x1000);
+	memset (buf_rd , 0x00, 32);
+
+	const struct flash_mspi_nor_config *dev_config = dev->config;
+	struct flash_mspi_nor_data *dev_data = dev->data;
+	rc = dev_cfg_apply(dev, &mspi_dev_cfg_xip);
+
+	flash_mspi_command_set(dev, &commands_single.read);
+
+	dev_data->packet.data_buf  = buf_rd;
+	dev_data->packet.address  = 0;
+	dev_data->packet.num_bytes = 32;
+	rc = mspi_transceive(dev_config->bus, &dev_config->mspi_id,
+				&dev_data->xfer);
+
+	for (int i = 0; i < 32; i++) {
+		printf ("***[%s], [%s], [%04d], buf_rd is %x\r\n", __FILE__, __func__, __LINE__, buf_rd[i]);
+	}
+}
+
+
+void flash_mspi_command_set(const struct device *dev, const struct flash_mspi_nor_cmd *cmd)
+{
+	struct flash_mspi_nor_data *dev_data = dev->data;
+	const struct flash_mspi_nor_config *dev_config = dev->config;
+
+	memset(&dev_data->xfer, 0, sizeof(dev_data->xfer));
+	memset(&dev_data->packet, 0, sizeof(dev_data->packet));
+
+	dev_data->xfer.xfer_mode  = MSPI_PIO;
+	dev_data->xfer.packets    = &dev_data->packet;
+	dev_data->xfer.num_packet = 1;
+	dev_data->xfer.timeout    = 10;
+
+	dev_data->xfer.cmd_length = cmd->cmd_length;
+	dev_data->xfer.addr_length = cmd->addr_length;
+	dev_data->xfer.tx_dummy = (cmd->dir == MSPI_TX) ?
+				  cmd->tx_dummy : dev_config->mspi_nor_cfg.tx_dummy;
+	dev_data->xfer.rx_dummy = (cmd->dir == MSPI_RX) ?
+				  cmd->rx_dummy : dev_config->mspi_nor_cfg.rx_dummy;
+
+	dev_data->packet.dir = cmd->dir;
+	dev_data->packet.cmd = cmd->cmd;
+}
+
+void flash_mspi_command_set_dma(const struct device *dev, const struct flash_mspi_nor_cmd *cmd)
+{
+	struct flash_mspi_nor_data *dev_data = dev->data;
+	const struct flash_mspi_nor_config *dev_config = dev->config;
+
+	memset(&dev_data->xfer, 0, sizeof(dev_data->xfer));
+	memset(&dev_data->packet, 0, sizeof(dev_data->packet));
+
+	dev_data->xfer.xfer_mode  = MSPI_DMA;
+	dev_data->xfer.packets    = &dev_data->packet;
+	dev_data->xfer.num_packet = 1;
+	dev_data->xfer.timeout    = 10;
+
+	dev_data->xfer.cmd_length = cmd->cmd_length;
+	dev_data->xfer.addr_length = cmd->addr_length;
+	dev_data->xfer.tx_dummy = (cmd->dir == MSPI_TX) ?
+				  cmd->tx_dummy : dev_config->mspi_nor_cfg.tx_dummy;
+	dev_data->xfer.rx_dummy = (cmd->dir == MSPI_RX) ?
+				  cmd->rx_dummy : dev_config->mspi_nor_cfg.rx_dummy;
+
+	dev_data->packet.dir = cmd->dir;
+	dev_data->packet.cmd = cmd->cmd;
+}
+
 static DEVICE_API(flash, drv_api) = {
 	.read = api_read,
 	.write = api_write,
@@ -871,6 +938,18 @@ BUILD_ASSERT((FLASH_SIZE_INST(inst) % CONFIG_FLASH_MSPI_NOR_LAYOUT_PAGE_SIZE) ==
 #define FLASH_PAGE_LAYOUT_DEFINE(inst)
 #define FLASH_PAGE_LAYOUT_CHECK(inst)
 #endif
+
+static inline uint32_t dev_flash_size(const struct device *dev)
+{
+	const struct flash_mspi_nor_config *dev_config = dev->config;
+
+	return dev_config->flash_size;
+}
+
+static inline uint16_t dev_page_size(const struct device *dev)
+{
+	return SPI_NOR_PAGE_SIZE;
+}
 
 /* MSPI bus must be initialized before this device. */
 #if (CONFIG_MSPI_INIT_PRIORITY < CONFIG_FLASH_INIT_PRIORITY)
