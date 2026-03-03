@@ -1,0 +1,94 @@
+# Copyright (c) 2022-2025 Macronix International Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig SPI_NAND
+	bool "SPI NAND Flash"
+	default y
+	depends on DT_HAS_JEDEC_SPI_NAND_ENABLED
+	select FLASH_HAS_DRIVER_ENABLED
+	select FLASH_HAS_EXPLICIT_ERASE
+	select FLASH_HAS_PAGE_LAYOUT
+	select SPI
+
+if SPI_NAND
+
+config SPI_NAND_INIT_PRIORITY
+	int "SPI NAND init priority"
+	default 80
+	help
+	  Device driver initialization priority.
+	  Device is connected to SPI bus, it has to
+	  be initialized after SPI driver.
+
+config SPI_NAND_SOFTWARE_ECC
+	bool "Software ECC for SPI NAND flash"
+	help
+	  Enable this option to use software-based ECC (Error Correction Code)
+	  when accessing SPI NAND flash devices. This is useful for platforms
+	  that do not support hardware ECC, or when additional software control
+	  over ECC handling is required.
+
+config SPI_NAND_ECC_STEP_SIZE
+	int "ECC step size (bytes)"
+	default 512
+	depends on SPI_NAND_SOFTWARE_ECC
+	help
+	  Specifies the ECC (Error Correction Code) step size in bytes for SPI NAND
+	  flash operations. This value determines how many bytes of data are protected
+	  by one ECC block.
+
+config SPI_NAND_BCH_HEAP_SIZE
+	int "BCH heap size (bytes)"
+	default 2048 if SPI_NAND_BCH_LUT_STATIC
+	default 34816
+	depends on SPI_NAND_SOFTWARE_ECC
+	help
+	  Specify the heap size (in bytes) reserved for BCH (Bose-Chaudhuri-Hocquenghem)
+	  error correction in SPI NAND flash operations.
+
+config SPI_NAND_BCH_LUT_STATIC
+    bool "Store BCH LUT in Flash"
+    default y
+	depends on SPI_NAND_SOFTWARE_ECC
+    help
+      Enable this option to store the BCH Look-Up Tables (Log and Pow tables) 
+      in the internal Flash instead of RAM.
+
+      - If ENABLED (y):
+        Saves significant amount of RAM (typically 16KB or more depending on 
+        the Galois Field size). However, ECC calculation might be slightly 
+        slower due to Flash access latency. Use 'const' qualifiers in your 
+        code to ensure tables are linked to the .rodata section.
+
+      - If DISABLED (n):
+        The tables will be loaded into RAM (.data section). This provides 
+        the fastest possible access for ECC encoding/decoding but consumes 
+        precious SRAM.
+
+      Select 'y' if your system is RAM-constrained and can tolerate a minor 
+      performance hit during SPI NAND operations.
+
+config SPI_NAND_BCH_LUT_ADD_CONFIGURABLE
+    bool "Enable custom absolute addresses for SPI NAND BCH LUT"
+    default n
+	help
+      If enabled, the SPI NAND BCH Lookup Tables (LUT) will be placed at 
+      user-defined absolute physical addresses in Flash.
+
+config SPI_NAND_POW_LUT_ADDRESS
+    hex "Absolute address for pow lookup table"
+    default 0
+	help
+      Specifies the absolute physical flash address for the '.pow_lut_section'.      
+      This value is used by the linker script to position the pow LUT at a fixed 
+      memory location. 
+
+config SPI_NAND_LOG_LUT_ADDRESS
+    hex "Absolute address for log lookup table"
+    default 0
+	help
+      Specifies the absolute physical flash address for the '.log_lut_section'.      
+      This value is used by the linker script to position the log LUT at a fixed 
+      memory location. 
+
+endif # SPI_NAND

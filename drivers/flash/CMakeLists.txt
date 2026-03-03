@@ -1,5 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
+if (CONFIG_SPI_NAND_BCH_LUT_STATIC)
+  generate_inc_file_for_target(app pow.bin pow.inc)
+  generate_inc_file_for_target(app log.bin log.inc)
+endif()
+
+if (CONFIG_SPI_NAND_BCH_LUT_ADD_CONFIGURABLE)
+  zephyr_linker_sources(SECTIONS nand_bch_lut_linker.ld)
+endif()
+
 zephyr_library_sources(flash_util.c)
 
 zephyr_syscall_header_ifdef(
@@ -67,6 +76,8 @@ zephyr_library_sources_ifdef(CONFIG_SOC_FLASH_SMARTBOND flash_smartbond.c)
 zephyr_library_sources_ifdef(CONFIG_SOC_FLASH_TELINK_B91 soc_flash_b91.c)
 zephyr_library_sources_ifdef(CONFIG_SOC_FLASH_XMC4XXX soc_flash_xmc4xxx.c)
 zephyr_library_sources_ifdef(CONFIG_SPI_FLASH_AT45 spi_flash_at45.c)
+zephyr_library_sources_ifdef(CONFIG_SPI_NAND_SOFTWARE_ECC bch.c)
+zephyr_library_sources_ifdef(CONFIG_SPI_NAND spi_nand.c)
 zephyr_library_sources_ifdef(CONFIG_SPI_NOR spi_nor.c)
 # zephyr-keep-sorted-stop
 
