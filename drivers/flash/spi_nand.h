@@ -15,6 +15,13 @@
 #include <zephyr/toolchain.h>
 
 #define SPI_NAND_MAX_ID_LEN 8
+#define SPI_NAND_MAX_ID_LEN 8
+#define SPI_NAND_MAX_PAGE_SIZE 4096
+#define SPI_NAND_MAX_OOB_SIZE 256
+#define SPI_NAND_MAX_ECC_STEPS 8
+#define SPI_NAND_MAX_ECC_BYTES 56
+#define SPI_NAND_ECC_LAYOUT_POS 2
+#define SPI_NAND_MAX_PAGE_BUF_SIZE (SPI_NAND_MAX_PAGE_SIZE + SPI_NAND_MAX_OOB_SIZE)
 
 /** SPI NAND commands */
 enum spi_nand_cmd {

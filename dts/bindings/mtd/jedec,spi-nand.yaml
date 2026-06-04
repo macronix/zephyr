@@ -76,3 +76,15 @@ properties:
     type: boolean
     description: |
       Indicates whether the flash read commands support plane select.
+
+  ecc-bits:
+    required: true
+    type: int
+    description: |
+      Number of error correction bits used by the BCH algorithm for SPI NAND flash ECC protection.
+
+  oob-size:
+    required: true
+    type: int
+    description: |
+      The size of the Out-Of-Band (OOB) area in bytes.

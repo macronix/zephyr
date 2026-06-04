@@ -22,4 +22,21 @@ config SPI_NAND_INIT_PRIORITY
 	  Device driver initialization priority. Device is connected to
 	  SPI bus, it has to be initialized after SPI driver.
 
+config SPI_NAND_SOFTWARE_ECC
+	bool "Software ECC for SPI NAND flash"
+	help
+	  Enable this option to use software-based ECC (Error Correction Code)
+	  when accessing SPI NAND flash devices. This is useful for platforms
+	  that do not support hardware ECC, or when additional software control
+	  over ECC handling is required.
+
+config SPI_NAND_ECC_STEP_SIZE
+	int "ECC step size (bytes)"
+	default 512
+	depends on SPI_NAND_SOFTWARE_ECC
+	help
+	  Specifies the ECC (Error Correction Code) step size in bytes for SPI NAND
+	  flash operations. This value determines how many bytes of data are protected
+	  by one ECC block.
+
 endif # SPI_NAND

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2025 Macronix International Co., Ltd.
+ * Copyright (c) 2022-2026 Macronix International Co., Ltd.
  * Copyright (c) 2025 Embeint Pty Ltd
  * Copyright (c) 2026 CodeWrights GmbH
  *
@@ -23,6 +23,10 @@
 #include <zephyr/sys/util.h>
 
 #include "spi_nand.h"
+#if defined(CONFIG_SPI_NAND_SOFTWARE_ECC)
+#include "bch.h"
+#define SPI_NAND_ECC_SIZE CONFIG_SPI_NAND_ECC_STEP_SIZE
+#endif
 
 struct spi_nand_config {
 	/* Devicetree SPI configuration */
@@ -45,6 +49,8 @@ struct spi_nand_config {
 	uint16_t page_read_us;
 	/* Maximum duration for RESET command to execute */
 	uint16_t reset_us;
+	/* Size of the Out-Of-Band (OOB) area in bytes */
+	uint16_t oob_size;
 	/* Mask to get column address */
 	uint32_t addr_offset_mask;
 	/* Shift to apply to get page address */
@@ -61,11 +67,36 @@ struct spi_nand_config {
 	bool has_program_plane_select;
 	/* Read commands support plane select */
 	bool has_read_plane_select;
+	/* Number of error correction bits */
+	uint8_t ecc_bits;
 };
+
+#if defined(CONFIG_SPI_NAND_SOFTWARE_ECC)
+	struct nand_ecc_info {
+		uint8_t ecc_bits;
+		uint8_t ecc_bytes;
+		uint8_t ecc_steps;
+		uint8_t ecc_layout_pos;
+		uint32_t ecc_size;
+		uint8_t ecc_calc[SPI_NAND_MAX_ECC_STEPS * SPI_NAND_MAX_ECC_BYTES];
+		uint8_t ecc_code[SPI_NAND_MAX_ECC_STEPS * SPI_NAND_MAX_ECC_BYTES];
+	};
+
+	struct nand_bch_control {
+		bch_t *bch;
+		uint8_t mask_ff[SPI_NAND_MAX_ECC_BYTES];
+		uint8_t input_data[SPI_NAND_MAX_PAGE_SIZE];
+	};
+#endif
 
 struct spi_nand_data {
 	/* Access semaphore */
 	struct k_sem sem;
+	uint8_t page_buf[SPI_NAND_MAX_PAGE_BUF_SIZE];
+#if defined(CONFIG_SPI_NAND_SOFTWARE_ECC)
+	struct nand_ecc_info ecc;
+	struct nand_bch_control nbc;
+#endif
 };
 
 /* Indicates that an access command includes bytes for the address.
@@ -98,6 +129,33 @@ struct spi_nand_data {
 #define BAD_BLOCK_MARKER_OFFSET 0x00
 
 LOG_MODULE_REGISTER(spi_nand, CONFIG_FLASH_LOG_LEVEL);
+
+/**
+ *  find msb
+ *  for example:
+ *  fmsb32(0) return -1
+ *  fmsb32(1) return 0
+ *  fmsb32(0x80000000) return 31
+ **/
+static int fmsb32(uint32_t bits)
+{
+	int n = 32, m = 16;
+	uint32_t x = 0xffffffff;
+
+	if (bits == 0U) {
+		return -1;
+	}
+
+	do {
+		if ((bits & (x << (32 - m))) == 0U) {
+			bits <<= m;
+			n -= m;
+		}
+		m >>= 1;
+	} while (m > 0);
+
+	return n - 1;
+}
 
 /* Everything necessary to acquire owning access to the device. */
 static void acquire_device(const struct device *dev)
@@ -410,15 +468,119 @@ static bool valid_region(const struct device *dev, off_t addr, size_t size)
 	return true;
 }
 
+#if defined(CONFIG_SPI_NAND_SOFTWARE_ECC)
+static int nand_bch_calc(const struct device *dev, uint8_t *buf_data, uint8_t *buf_ecc)
+{
+	int ret = 0;
+	struct spi_nand_data *data = dev->data;
+
+	bch_encode(data->nbc.bch, buf_data, buf_ecc);
+	for (int n = 0; n < data->ecc.ecc_bytes; n++) {
+		buf_ecc[n] ^= data->nbc.mask_ff[n];
+	}
+
+	return ret;
+}
+
+static int nand_bch_corr(const struct device *dev, uint8_t *buf_data, uint8_t *buf_ecc)
+{
+	int ret = 0;
+	struct spi_nand_data *data = dev->data;
+
+	for (int n = 0; n < data->ecc.ecc_bytes; n++) {
+		buf_ecc[n] ^= data->nbc.mask_ff[n];
+	}
+	ret = bch_decode(data->nbc.bch, buf_data, buf_ecc);
+
+	return ret;
+}
+
+static inline void nand_bch_release(const struct device *dev)
+{
+	struct spi_nand_data *data = dev->data;
+
+    if (data->nbc.bch != NULL) {
+        bch_free(data->nbc.bch);
+        data->nbc.bch = NULL;
+    }
+}
+
+static int bch_ecc_init(const struct device *dev)
+{
+	struct spi_nand_data *data = dev->data;
+	const struct spi_nand_config *config = dev->config;
+	uint32_t i;
+	uint32_t eccbytes = 0;
+	uint32_t page_size = config->parameters->write_block_size;
+	int ret = 0;
+
+	data->ecc.ecc_size = SPI_NAND_ECC_SIZE;
+	uint32_t m = fmsb32(8 * data->ecc.ecc_size) + 1;
+
+	data->ecc.ecc_steps = page_size / data->ecc.ecc_size;
+
+	/* skip the bad block mark for SPI NAND */
+	data->ecc.ecc_layout_pos = SPI_NAND_ECC_LAYOUT_POS;
+	data->ecc.ecc_bytes = eccbytes = ROUNDUP_DIV(config->ecc_bits * m, 8);
+
+	ret = bch_init(m, config->ecc_bits, data->ecc.ecc_size, &data->nbc.bch);
+	if (ret != 0) {
+		return -EINVAL;
+	}
+
+	/* verify that eccbytes has the expected value */
+	if (data->nbc.bch->ecc_bytes != eccbytes) {
+		LOG_ERR("invalid eccbytes %d, should be %d\n", eccbytes, data->nbc.bch->ecc_bytes);
+		return -EINVAL;
+	}
+	if (page_size + config->oob_size > sizeof(data->page_buf)) {
+		LOG_ERR("page_buf too small");
+		return -ENOMEM;
+	}
+	if (data->ecc.ecc_size > sizeof(data->nbc.input_data)) {
+		LOG_ERR("input_data too small");
+		return -ENOMEM;
+	}
+	if (data->ecc.ecc_steps * data->ecc.ecc_bytes > sizeof(data->ecc.ecc_calc)) {
+		LOG_ERR("ecc_calc too small");
+		return -ENOMEM;
+	}
+	if (data->ecc.ecc_steps * data->ecc.ecc_bytes > sizeof(data->ecc.ecc_code)) {
+		LOG_ERR("ecc_code too small");
+		return -ENOMEM;
+	}
+	if (eccbytes > sizeof(data->nbc.mask_ff)) {
+		LOG_ERR("mask_ff too small");
+		return -ENOMEM;
+	}
+
+	/*
+	 * compute and store the inverted ecc of an erased ecc block
+	 */
+	memset(data->page_buf, 0xff, page_size + config->oob_size);
+	memset(data->nbc.input_data, 0xff, data->ecc.ecc_size);
+	memset(data->nbc.mask_ff, 0, eccbytes);
+
+	bch_encode(data->nbc.bch, data->nbc.input_data, (uint8_t *)data->nbc.mask_ff);
+
+	for (i = 0; i < eccbytes; i++) {
+		data->nbc.mask_ff[i] ^= 0xff;
+	}
+
+	return ret;
+}
+#endif
+
 static int spi_nand_read(const struct device *dev, off_t addr, void *dest, size_t size)
 {
 	const struct spi_nand_config *config = dev->config;
+	struct spi_nand_data *data = dev->data;
+	uint32_t page_size = config->parameters->write_block_size;
 	uint8_t *dest_u8 = dest;
 	uint32_t page_address;
 	uint8_t plane;
 	uint16_t page_offset;
-	uint16_t bytes_to_end;
-	uint16_t bytes_to_read;
+	uint8_t status;
 	int ret = 0;
 
 	if (size == 0) {
@@ -434,43 +596,75 @@ static int spi_nand_read(const struct device *dev, off_t addr, void *dest, size_
 	acquire_device(dev);
 
 	while (size > 0) {
-		page_address = addr >> config->addr_page_shift;
-		page_offset = addr & config->addr_offset_mask;
+		/* Calculate how much to read in this iteration */
+		uint32_t chunk = (size < page_size) ? size : page_size;
+		page_offset = addr % page_size;
 		plane = config->plane_addr_bits > 0 ? (addr >> config->addr_block_shift) &
 							      ((1 << config->plane_addr_bits) - 1)
 						    : 0;
-		bytes_to_end = config->parameters->write_block_size - page_offset;
-		bytes_to_read = MIN(size, bytes_to_end);
+
+		page_address = addr >> config->addr_page_shift;
 
 		/* Copy data from main storage to cache */
-		LOG_DBG("Read %d from %06x:%03x", bytes_to_read, page_address, page_offset);
+		LOG_DBG("Read %d from %06x:%03x", page_size, page_address, page_offset);
 		ret = spi_nand_page_read_to_cache(dev, page_address);
 		if (ret != 0) {
 			LOG_DBG("Copy from NAND to device cache failed (%d)", ret);
 			break;
 		}
 
+        uint32_t read_len = page_size + config->oob_size;
+
 		/* Read data out of cache */
-		ret = spi_nand_read_from_cache(dev, plane, page_offset, dest_u8, bytes_to_read);
+		ret = spi_nand_read_from_cache(dev, plane, 0, data->page_buf, read_len);
 		if (ret != 0) {
 			LOG_DBG("Read from device cache failed (%d)", ret);
 			break;
 		}
 
-		/* Update for next iteration */
-		dest_u8 += bytes_to_read;
-		addr += bytes_to_read;
-		size -= bytes_to_read;
-	}
+#if defined(CONFIG_SPI_NAND_SOFTWARE_ECC)
+        if (config->ecc_bits > 0) {
+            uint8_t *p = (uint8_t *)data->page_buf;
+            uint8_t ecc_steps = data->ecc.ecc_steps;
+            int ecc_ret = 0;
 
-	release_device(dev);
-	return ret;
+            memcpy(data->ecc.ecc_code,
+                   data->page_buf + page_size + data->ecc.ecc_layout_pos,
+                   data->ecc.ecc_bytes * data->ecc.ecc_steps);
+
+            for (uint8_t i = 0; ecc_steps > 0;
+                 ecc_steps--, i += data->ecc.ecc_bytes, p += data->ecc.ecc_size) {
+                memcpy(data->nbc.input_data, p, data->ecc.ecc_size);
+                ecc_ret = nand_bch_corr(dev, data->nbc.input_data,
+                                        data->ecc.ecc_code + i);
+                if (ecc_ret < 0) {
+                    LOG_ERR("SW ECC uncorrectable error at step %u (page 0x%06x)",
+                            i / data->ecc.ecc_bytes, page_address);
+                    ret = -EBADMSG;
+                    goto release;
+                }
+                memcpy(p, data->nbc.input_data, data->ecc.ecc_size);
+            }
+        }
+#endif
+        memcpy(dest_u8, data->page_buf + page_offset, chunk);
+
+        dest_u8 += chunk;
+        size -= chunk;
+        addr += chunk;
+    }
+
+release:
+    release_device(dev);
+    return ret;
 }
 
 static int spi_nand_write(const struct device *dev, off_t addr, const void *src, size_t size)
 {
 	const struct spi_nand_config *config = dev->config;
+	struct spi_nand_data *data = dev->data;
 	uint32_t write_block = config->parameters->write_block_size;
+	uint32_t page_size = config->parameters->write_block_size;
 	uint8_t *src_u8 = (void *)src;
 	uint8_t plane = config->plane_addr_bits > 0 ? (addr >> config->addr_block_shift) &
 							      ((1 << config->plane_addr_bits) - 1)
@@ -509,8 +703,46 @@ static int spi_nand_write(const struct device *dev, off_t addr, const void *src,
 		page_address = addr >> config->addr_page_shift;
 		LOG_DBG("Write %d to %06x:000", write_block, page_address);
 
+		uint8_t *write_buf = NULL;
+		uint32_t write_size = 0;
+
+
+#if defined(CONFIG_SPI_NAND_SOFTWARE_ECC)
+        if (config->ecc_bits > 0) {
+            const uint8_t *p = src_u8;
+            uint8_t ecc_steps = data->ecc.ecc_steps;
+
+            memset(data->page_buf, 0xff, page_size + config->oob_size);
+            memcpy(data->page_buf, src_u8, page_size);
+
+            for (uint8_t i = 0; ecc_steps > 0;
+                 ecc_steps--, i += data->ecc.ecc_bytes, p += data->ecc.ecc_size) {
+                memcpy(data->nbc.input_data, p, data->ecc.ecc_size);
+                ret = nand_bch_calc(dev, data->nbc.input_data,
+                                    data->ecc.ecc_calc + i);
+                if (ret != 0) {
+                    LOG_ERR("ECC calculation failed: %d", ret);
+                    goto release;
+                }
+            }
+
+            memcpy(data->page_buf + page_size + data->ecc.ecc_layout_pos,
+                   data->ecc.ecc_calc, data->ecc.ecc_bytes * data->ecc.ecc_steps);
+
+            write_buf = data->page_buf;
+            write_size = page_size + config->oob_size;
+        } else
+#endif
+        {
+            write_buf = src_u8;
+            write_size = page_size;
+        }
+
+		page_address = addr >> config->addr_page_shift;
+		LOG_DBG("Write %d to %06x:000", write_block, page_address);
+
 		/* Copy data to cache (at offset 0) */
-		ret = spi_nand_write_to_cache(dev, plane, 0, src_u8, write_block);
+		ret = spi_nand_write_to_cache(dev, plane, 0, write_buf, write_size);
 		if (ret != 0) {
 			LOG_DBG("Copy to device cache failed (%d)", ret);
 			break;
@@ -544,6 +776,7 @@ static int spi_nand_write(const struct device *dev, off_t addr, const void *src,
 		addr += write_block;
 	}
 
+release:
 	release_device(dev);
 	return ret;
 }
@@ -958,9 +1191,38 @@ static int spi_nand_configure(const struct device *dev)
 		goto release;
 	}
 
+#if defined(CONFIG_SPI_NAND_SOFTWARE_ECC)
+    /* Initialize BCH software ECC */
+    if (config->ecc_bits > 0) {
+        ret = bch_ecc_init(dev);
+        if (ret != 0) {
+            LOG_ERR("bch init failed: %d", ret);
+            goto release;
+        }
+    } else {
+        LOG_ERR("Software ECC enabled but ecc_bits is 0");
+        ret = -EINVAL;
+		goto release;
+    }
+#else
+    /* Initialize hardware internal ECC */
+	ret = spi_nand_get_feature(dev, SPI_NAND_FEATURE_ADDR_CONFIG, &cfg);
+    if (ret != 0) {
+        goto release;
+    }
+
+    cfg |= SPI_NAND_FEATURE_CONFIG_ECC_EN;
+    ret = spi_nand_set_feature(dev, SPI_NAND_FEATURE_ADDR_CONFIG, cfg);
+    if (ret != 0) {
+        LOG_ERR("set feature failed: %d", ret);
+        goto release;
+    }
+#endif
+
 	/* Unlock all blocks */
 	ret = spi_nand_set_feature(dev, SPI_NAND_FEATURE_ADDR_BLOCK_PROT,
 				   SPI_NAND_FEATURE_BLOCK_PROT_DISABLE_ALL);
+
 release:
 	release_device(dev);
 	return ret;
@@ -1067,6 +1329,8 @@ static DEVICE_API(flash, spi_nand_api) = {
 		.jedec_id_len = ARRAY_SIZE(spi_nand_##idx##_jedec_id),                             \
 		.has_program_plane_select = DT_INST_PROP(idx, has_program_plane_select),           \
 		.has_read_plane_select = DT_INST_PROP(idx, has_read_plane_select),                 \
+		.ecc_bits = DT_INST_PROP(idx, ecc_bits),										   \
+		.oob_size = DT_INST_PROP(idx, oob_size),										   \
 		DEFINE_PAGE_LAYOUT(idx)};                                                          \
 	static struct spi_nand_data spi_nand_##idx##_data;                                         \
 	PM_DEVICE_DT_INST_DEFINE(idx, spi_nand_pm_control);                                        \
