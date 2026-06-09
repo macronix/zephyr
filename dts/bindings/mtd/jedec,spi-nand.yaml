@@ -76,3 +76,13 @@ properties:
     type: boolean
     description: |
       Indicates whether the flash read commands support plane select.
+
+  continuous-read:
+    type: boolean
+    required: true
+    description: |
+      Indicates whether the SPI NAND flash device supports continuous read mode.
+      When enabled, the device can perform sequential reads across page boundaries
+      without re-issuing a new read command for each page. This can improve read
+      throughput for large sequential data transfers.
+  

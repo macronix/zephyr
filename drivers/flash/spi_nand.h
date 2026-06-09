@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2025 Macronix International Co., Ltd.
+ * Copyright (c) 2022-2026 Macronix International Co., Ltd.
  * Copyright (c) 2025 Embeint Pty Ltd
  *
  * SPDX-License-Identifier: Apache-2.0
@@ -114,6 +114,8 @@ enum spi_nand_feature_config {
 	SPI_NAND_FEATURE_CONFIG_OTP_EN = BIT(6),
 	/** On-die ECC is enabled (Not documented by Macronix, but present in their driver) */
 	SPI_NAND_FEATURE_CONFIG_ECC_EN = BIT(4),
+	/** Continuous read mode is enabled */
+	SPI_NAND_FEATURE_CONFIG_CONT_EN = BIT(2),
 };
 
 /* ONFI 5.2, Revision 1.0, Section 6.7.1 */

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2025 Macronix International Co., Ltd.
+ * Copyright (c) 2022-2026 Macronix International Co., Ltd.
  * Copyright (c) 2025 Embeint Pty Ltd
  * Copyright (c) 2026 CodeWrights GmbH
  *
@@ -61,6 +61,8 @@ struct spi_nand_config {
 	bool has_program_plane_select;
 	/* Read commands support plane select */
 	bool has_read_plane_select;
+	/* Enable continuous read mode */
+	bool continuous_read;
 };
 
 struct spi_nand_data {
@@ -410,7 +412,86 @@ static bool valid_region(const struct device *dev, off_t addr, size_t size)
 	return true;
 }
 
-static int spi_nand_read(const struct device *dev, off_t addr, void *dest, size_t size)
+static int spi_nand_set_continuous_read(const struct device *dev, bool conti)
+{
+	int ret;
+	uint8_t secur_reg = 0;
+
+	ret = spi_nand_get_feature(dev, SPI_NAND_FEATURE_ADDR_CONFIG, &secur_reg);
+	if (ret != 0) {
+		LOG_ERR("get feature failed: %d", ret);
+		return ret;
+	}
+
+	if (conti) {
+		secur_reg |= SPI_NAND_FEATURE_CONFIG_CONT_EN;
+	} else {
+		secur_reg &= ~SPI_NAND_FEATURE_CONFIG_CONT_EN;
+	}
+	ret = spi_nand_set_feature(dev, SPI_NAND_FEATURE_ADDR_CONFIG, secur_reg);
+	if (ret != 0) {
+		LOG_ERR("set feature failed: %d", ret);
+		return ret;
+	}
+	ret = spi_nand_get_feature(dev, SPI_NAND_FEATURE_ADDR_CONFIG, &secur_reg);
+	if (ret != 0) {
+		LOG_ERR("get feature failed: %d", ret);
+		return ret;
+	}
+
+    bool is_enabled = (secur_reg & SPI_NAND_FEATURE_CONFIG_CONT_EN) != 0;
+    if (is_enabled != conti) {
+        LOG_ERR("Set continuous read to %d failed, actual secur_reg: 0x%02x\n", conti, secur_reg);
+        ret = -EIO;
+    }
+
+	return ret;
+}
+
+static int spi_nand_read_cont(const struct device *dev, off_t addr, void *dest, size_t size)
+{
+	const struct spi_nand_config *config = dev->config;
+	int ret = 0;
+	uint8_t status;
+	uint32_t page_address = addr >> config->addr_page_shift;
+	uint8_t	plane = config->plane_addr_bits > 0 ? (addr >> config->addr_block_shift) &
+							      ((1 << config->plane_addr_bits) - 1)
+						    : 0;
+	acquire_device(dev);
+
+	/* Enable continuous read mode */
+	ret = spi_nand_set_continuous_read(dev, true);
+	if (ret != 0) {
+		LOG_ERR("SPI NAND Set continuous read enable Failed: %d", ret);
+		goto release;
+	}
+
+	/* Copy data from main storage to cache */
+	ret = spi_nand_page_read_to_cache(dev, page_address);
+	if (ret != 0) {
+		LOG_ERR("Initial page read failed: %d", ret);
+		goto release;
+	}
+
+	/* Read data out of cache */
+	ret = spi_nand_read_from_cache(dev, plane, page_address, dest, size);
+	if (ret != 0) {
+		LOG_ERR("Continuous read cache failed: %d", ret);
+		goto release;
+	}
+
+release:
+	/* Disable continuous read mode */
+	int disable_ret = spi_nand_set_continuous_read(dev, false);
+	if (disable_ret != 0 && ret == 0) {
+		ret = disable_ret;
+	}
+
+	release_device(dev);
+	return ret;
+}
+
+static int spi_nand_read_page(const struct device *dev, off_t addr, void *dest, size_t size)
 {
 	const struct spi_nand_config *config = dev->config;
 	uint8_t *dest_u8 = dest;
@@ -420,16 +501,6 @@ static int spi_nand_read(const struct device *dev, off_t addr, void *dest, size_
 	uint16_t bytes_to_end;
 	uint16_t bytes_to_read;
 	int ret = 0;
-
-	if (size == 0) {
-		/* No work to do */
-		return 0;
-	}
-
-	/* Read area must be subregion of device */
-	if (!valid_region(dev, addr, size)) {
-		return -EINVAL;
-	}
 
 	acquire_device(dev);
 
@@ -464,6 +535,31 @@ static int spi_nand_read(const struct device *dev, off_t addr, void *dest, size_
 	}
 
 	release_device(dev);
+	return ret;
+}
+
+static int spi_nand_read(const struct device *dev, off_t addr, void *dest, size_t size)
+{
+	struct spi_nand_data *data = dev->data;
+	const struct spi_nand_config *config = dev->config;
+	int ret = 0;
+
+	if (size == 0) {
+		/* No work to do */
+		return 0;
+	}
+
+	/* Read area must be subregion of device */
+	if (!valid_region(dev, addr, size)) {
+		return -EINVAL;
+	}
+
+    if (config->continuous_read) {
+        ret = spi_nand_read_cont(dev, addr, dest, size);
+    } else {
+        ret = spi_nand_read_page(dev, addr, dest, size);
+    }
+
 	return ret;
 }
 
@@ -1067,6 +1163,7 @@ static DEVICE_API(flash, spi_nand_api) = {
 		.jedec_id_len = ARRAY_SIZE(spi_nand_##idx##_jedec_id),                             \
 		.has_program_plane_select = DT_INST_PROP(idx, has_program_plane_select),           \
 		.has_read_plane_select = DT_INST_PROP(idx, has_read_plane_select),                 \
+		.continuous_read = DT_INST_PROP(idx, continuous_read),							   \
 		DEFINE_PAGE_LAYOUT(idx)};                                                          \
 	static struct spi_nand_data spi_nand_##idx##_data;                                         \
 	PM_DEVICE_DT_INST_DEFINE(idx, spi_nand_pm_control);                                        \
