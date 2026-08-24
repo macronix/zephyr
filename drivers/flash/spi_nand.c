@@ -275,9 +275,15 @@ static int spi_nand_wait_until_ready(const struct device *dev)
 {
 	int ret;
 	uint8_t reg = 0;
+	uint32_t spins = 0;
 
 	do {
 		ret = spi_nand_get_feature(dev, SPI_NAND_FEA_ADDR_STATUS, &reg);
+
+		if (++spins > 100000U) {
+			LOG_ERR("wait_until_ready gave up: status=0x%02x ret=%d", reg, ret);
+			return -ETIMEDOUT;
+		}
 	} while (!ret && (reg & SPI_NAND_WIP_BIT));
 
 	return ret;
@@ -632,6 +638,11 @@ static int spi_nand_erase(const struct device *dev, off_t addr, size_t size)
 		return -EINVAL;
 	}
 
+	if (data->block_size == 0U) {
+		LOG_ERR("block_size is zero -- geometry was never established");
+		return -EINVAL;
+	}
+
 	/* size must be a multiple of blocks */
 	if ((size % data->block_size) != 0) {
 		return -EINVAL;
@@ -818,6 +829,8 @@ out0:
 		LOG_ERR("ONFI table found\n");
 		data->page_size = onfi_table[80] + (onfi_table[81] << 8) + (onfi_table[82] << 16);
 		data->oob_size = onfi_table[84] + (onfi_table[85] << 8);
+		/* ONFI bytes 92-95: number of pages per block. */
+		data->page_num = onfi_table[92] + (onfi_table[93] << 8);
 		data->block_num = onfi_table[96] + (onfi_table[97] << 8);
 		data->block_size = data->page_size * data->page_num;
 		switch (data->page_size) {
@@ -864,7 +877,8 @@ out0:
 			data->read_recovery = false;
 		}
 
-		if (onfi_table[168] & 0x02) {
+		if ((onfi_table[168] & 0x02) &&
+		    ((const struct spi_nand_config *)dev->config)->support_conti_read) {
 			data->continuous_read = true;
 
 			ret = spi_nand_conti_read_enable(dev, true);
@@ -989,7 +1003,7 @@ static int spi_nand_init(const struct device *dev)
 }
 
 static const struct flash_parameters flash_nand_parameters = {
-	.write_block_size = DT_INST_PROP(0, cs_wait_delay),
+	.write_block_size = 1,
 	.erase_value = 0xff,
 };
 
@@ -1018,6 +1032,14 @@ static const struct spi_nand_config spi_nand_config_0 = {
 				    DT_INST_PROP(0, cs_wait_delay)),
 	.id = DT_INST_PROP(0, id),
 	.support_conti_read = DT_INST_PROP(0, support_conti_read),
+	/*
+	 * spi_nand_write() buffers a whole page (memset to 0xff, then the
+	 * payload) and programs it in one go, so no offset or length alignment
+	 * is required of the caller.  Leaving this at 0 made the guards in
+	 * spi_nand_write() compute "addr & 0xffffffff" and reject everything
+	 * with -EINVAL.
+	 */
+	.sub_page_size = 1,
 };
 
 static struct spi_nand_data spi_nand_data_0;
