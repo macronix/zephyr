@@ -1,12 +1,10 @@
-# STM32 SPI driver configuration options
-
-# Copyright (c) 2015-2016 Intel Corporation
+# Copyright (c) 2025-2026 Macronix International Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
 menuconfig SPI_MXIC_UEFC
-	bool "MXIC UEFC controller driver"
+	bool "MXIC UEFC SPI controller driver"
 	default y
+	depends on DT_HAS_XLNX_MXIC_UEFC_SPI_ENABLED
 	help
-	  Enable SPI support on the STM32 family of processors.
-
-
+	  Enable the Macronix UEFC host controller driver for the standard
+	  SPI subsystem (PIO/IO transfer mode only).
