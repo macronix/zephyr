@@ -16,6 +16,10 @@ static int flash_get_page_info(const struct device *dev, off_t offs,
 	size_t layout_size;
 	uint32_t index_jmp;
 
+	if (api->page_layout == NULL) {
+		return -ENOSYS;
+	}
+
 	info->start_offset = 0;
 	info->index = 0U;
 
@@ -62,6 +66,10 @@ size_t z_impl_flash_get_page_count(const struct device *dev)
 	size_t layout_size;
 	size_t count = 0;
 
+	if (api->page_layout == NULL) {
+		return 0;
+	}
+
 	api->page_layout(dev, &layout, &layout_size);
 
 	while (layout_size--) {
@@ -80,6 +88,10 @@ void flash_page_foreach(const struct device *dev, flash_page_cb cb,
 	struct flash_pages_info page_info;
 	size_t block, num_blocks, page = 0, i;
 	off_t off = 0;
+
+	if (api->page_layout == NULL) {
+		return;
+	}
 
 	api->page_layout(dev, &layout, &num_blocks);
 
