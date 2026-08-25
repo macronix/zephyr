@@ -11,11 +11,25 @@
 #include <stdio.h>
 #include <string.h>
 
-#define SPI_NAND_TEST_REGION_OFFSET 0xff000
+/*
+ * The driver's addr is not a linear data offset: each page occupies 0x1000 of
+ * address space (row = addr >> 12, column = addr & 0xfff) but only 2048 of
+ * those bytes are data.  So a block is 0x40000 of address space and 0x20000
+ * of data, and the two are not interchangeable:
+ *
+ *   BLOCK_SIZE   - data bytes, what flash_erase() takes as its size
+ *   BLOCK_STRIDE - address space, what stepping to the next block costs
+ *
+ * The offset must sit on a block boundary (0x40000 multiple) or
+ * spi_nand_erase() rejects it.  0xc0000 is the start of block 3 -- the block
+ * the original 0xff000 landed in the middle of.
+ */
+#define SPI_NAND_TEST_REGION_OFFSET 0xc0000
 #define SPI_NAND_BLOCK_SIZE         0x20000U
+#define SPI_NAND_BLOCK_STRIDE       0x40000U
 
 #if defined(CONFIG_FLASH_STM32_OSPI) || defined(CONFIG_FLASH_STM32_QSPI) ||                        \
-	defined(CONFIG_FLASH_STM32_XSPI)
+	defined(CONFIG_FLASH_STM32_XSPI) || defined(CONFIG_SPI_NAND)
 #define SPI_NAND_MULTI_SECTOR_TEST
 #endif
 
@@ -126,7 +140,7 @@ void multi_sector_test(const struct device *flash_dev)
 		memset(buf, 0, len);
 		size_t offs = SPI_NAND_TEST_REGION_OFFSET;
 
-		while (offs < SPI_NAND_TEST_REGION_OFFSET + 2 * SPI_NAND_BLOCK_SIZE) {
+		while (offs < SPI_NAND_TEST_REGION_OFFSET + 2 * SPI_NAND_BLOCK_STRIDE) {
 			rc = flash_read(flash_dev, offs, buf, len);
 			if (rc != 0) {
 				printf("Flash read failed! %d\n", rc);
@@ -137,7 +151,7 @@ void multi_sector_test(const struct device *flash_dev)
 				       *(uint32_t *)buf);
 				return;
 			}
-			offs += SPI_NAND_BLOCK_SIZE;
+			offs += SPI_NAND_BLOCK_STRIDE;
 		}
 		printf("Flash erase succeeded!\n");
 	}
@@ -146,7 +160,7 @@ void multi_sector_test(const struct device *flash_dev)
 
 	size_t offs = SPI_NAND_TEST_REGION_OFFSET;
 
-	while (offs < SPI_NAND_TEST_REGION_OFFSET + 2 * SPI_NAND_BLOCK_SIZE) {
+	while (offs < SPI_NAND_TEST_REGION_OFFSET + 2 * SPI_NAND_BLOCK_STRIDE) {
 		printf("Attempting to write %zu bytes at offset 0x%x\n", len, offs);
 		rc = flash_write(flash_dev, offs, expected, len);
 		if (rc != 0) {
@@ -177,7 +191,7 @@ void multi_sector_test(const struct device *flash_dev)
 				++wp;
 			}
 		}
-		offs += SPI_NAND_BLOCK_SIZE;
+		offs += SPI_NAND_BLOCK_STRIDE;
 	}
 }
 #endif
