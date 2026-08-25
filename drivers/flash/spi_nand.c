@@ -90,6 +90,11 @@ struct spi_nand_data {
 
 	uint8_t block_shift;
 
+#ifdef CONFIG_FLASH_PAGE_LAYOUT
+	/* Filled in by spi_nand_configure() once the geometry is known. */
+	struct flash_pages_layout layout;
+#endif
+
 	bool continuous_read;
 
 	bool read_recovery;
@@ -269,9 +274,19 @@ static int spi_nand_set_feature(const struct device *dev,
  * in the code.
  *
  * @param dev The device structure
+ * @param fail_mask status bits that mean *this* operation failed, or 0 for an
+ *        operation that sets neither (a read).
  * @return 0 on success, negative errno code otherwise
+ *
+ * The chip reports a failed program or erase in the status register and still
+ * clears WIP, so polling WIP alone reports success for an operation that never
+ * happened.  But P_FAIL and E_FAIL are sticky: each is cleared by the next
+ * operation of its own kind, not by any operation.  A failed program therefore
+ * leaves P_FAIL set across every following erase and read, so a caller must
+ * only be shown the bit its own operation can set -- checking both here made
+ * one real program failure poison every subsequent command.
  */
-static int spi_nand_wait_until_ready(const struct device *dev)
+static int spi_nand_wait_until_ready(const struct device *dev, uint8_t fail_mask)
 {
 	int ret;
 	uint8_t reg = 0;
@@ -285,6 +300,11 @@ static int spi_nand_wait_until_ready(const struct device *dev)
 			return -ETIMEDOUT;
 		}
 	} while (!ret && (reg & SPI_NAND_WIP_BIT));
+
+	if (ret == 0 && (reg & fail_mask)) {
+		LOG_ERR("operation failed: status=0x%02x (checked 0x%02x)", reg, fail_mask);
+		return -EIO;
+	}
 
 	return ret;
 }
@@ -360,7 +380,7 @@ static int spi_nand_read_cont(const struct device *dev, off_t addr, void *dest,
 		goto out;
 	}
 
-	ret = spi_nand_wait_until_ready(dev);
+	ret = spi_nand_wait_until_ready(dev, 0);
 	if (ret != 0) {
 		LOG_ERR("wait ready failed: %d", ret);
 		goto out;
@@ -405,7 +425,7 @@ static int spi_nand_read_normal(const struct device *dev,
 			goto out;
 		}
 
-		ret = spi_nand_wait_until_ready(dev);
+		ret = spi_nand_wait_until_ready(dev, 0);
 		if (ret != 0) {
 			LOG_ERR("wait ready failed: %d", ret);
 			goto out;
@@ -456,7 +476,7 @@ static int spi_nand_read_software_ecc(const struct device *dev,
 			goto out;
 		}
 
-		ret = spi_nand_wait_until_ready(dev);
+		ret = spi_nand_wait_until_ready(dev, 0);
 		if (ret != 0) {
 			LOG_ERR("wait ready failed: %d", ret);
 			goto out;
@@ -549,6 +569,7 @@ static int spi_nand_write(const struct device *dev, off_t addr,
 	acquire_device(dev);
 
 	while (size > 0) {
+		off_t page_addr = addr;
 
 		/* Don't write more than a page. */
 		offset = addr % data->page_size;
@@ -616,9 +637,10 @@ static int spi_nand_write(const struct device *dev, off_t addr,
 		addr = (addr + SPI_NAND_PAGE_OFFSET) & (~SPI_NAND_PAGE_MASK);
 		size -= chunk;
 
-		ret = spi_nand_wait_until_ready(dev);
+		ret = spi_nand_wait_until_ready(dev, SPINAND_STATUS_BIT_PROGRAM_FAIL);
 		if (ret != 0) {
-			LOG_ERR("wait ready failed: %d", ret);
+			LOG_ERR("program failed at addr 0x%lx (%u bytes left): %d",
+				(unsigned long)page_addr, (unsigned int)size, ret);
 			goto out;
 		}
 	}
@@ -634,7 +656,7 @@ static int spi_nand_erase(const struct device *dev, off_t addr, size_t size)
 	int ret = 0;
 
 	/* address must be block-aligned */
-	if (!(addr & SPI_NAND_BLOCK_MASK) && (addr != 0)) {
+	if ((addr & SPI_NAND_BLOCK_MASK) && (addr != 0)) {
 		return -EINVAL;
 	}
 
@@ -651,6 +673,8 @@ static int spi_nand_erase(const struct device *dev, off_t addr, size_t size)
 	acquire_device(dev);
 
 	while ((size > 0) && (ret == 0)) {
+		off_t block_addr = addr;
+
 		spi_nand_cmd_write(dev, SPI_NAND_CMD_WREN);
 
 		ret = spi_nand_access(dev, SPI_NAND_CMD_BE,
@@ -664,9 +688,10 @@ static int spi_nand_erase(const struct device *dev, off_t addr, size_t size)
 		addr += SPI_NAND_BLOCK_OFFSET;
 		size -= data->block_size;
 
-		ret = spi_nand_wait_until_ready(dev);
+		ret = spi_nand_wait_until_ready(dev, SPINAND_STATUS_BIT_ERASE_FAIL);
 		if (ret != 0) {
-			LOG_ERR("wait ready failed: %d", ret);
+			LOG_ERR("erase failed at addr 0x%lx (%u bytes left): %d",
+				(unsigned long)block_addr, (unsigned int)size, ret);
 			goto out;
 		}
 	}
@@ -826,7 +851,7 @@ out0:
 
 	if (onfi_table[0] == 'O' && onfi_table[1] == 'N'
 		&& onfi_table[2] == 'F' && onfi_table[3] == 'I') {
-		LOG_ERR("ONFI table found\n");
+		LOG_INF("ONFI table found\n");
 		data->page_size = onfi_table[80] + (onfi_table[81] << 8) + (onfi_table[82] << 16);
 		data->oob_size = onfi_table[84] + (onfi_table[85] << 8);
 		/* ONFI bytes 92-95: number of pages per block. */
@@ -854,6 +879,24 @@ out0:
 		}
 		data->flash_size = data->block_size * data->block_num;
 		data->ecc.ecc_bits = onfi_table[112];
+
+#ifdef CONFIG_FLASH_PAGE_LAYOUT
+		/*
+		 * The layout describes the *address* space this driver takes,
+		 * not the data space.  addr is a packed row/column, so one
+		 * erase block spans SPI_NAND_BLOCK_OFFSET (0x40000) of address
+		 * space while holding only block_size (0x20000) bytes of data.
+		 * pages_size has to be the address-space stride, otherwise
+		 * flash_get_page_info_by_offs() would hand back start offsets
+		 * that are not block boundaries at all.
+		 *
+		 * Consequence: the size reported here is NOT the size to pass
+		 * to flash_erase(), which counts in data bytes -- one block is
+		 * block_size there.
+		 */
+		data->layout.pages_count = data->block_num;
+		data->layout.pages_size = SPI_NAND_BLOCK_OFFSET;
+#endif
 
 		if (data->ecc.ecc_bits > 0) {
 			bch_ecc_init(dev, data->ecc.ecc_bits);
@@ -946,7 +989,7 @@ static int spi_nand_configure(const struct device *dev)
 
 	rc = spi_nand_check_id(dev);
 	if (rc != 0) {
-		LOG_ERR("Check ID failed: ");
+		LOG_ERR("Check ID failed: %d", rc);
 		return -ENODEV;
 	}
 
@@ -1007,24 +1050,34 @@ static const struct flash_parameters flash_nand_parameters = {
 	.erase_value = 0xff,
 };
 
-static  struct flash_parameters *
-flash_nand_get_parameters( struct device *dev)
+static const struct flash_parameters *
+flash_nand_get_parameters(const struct device *dev)
 {
-	// ARG_UNUSED(dev);
-	// struct spi_nand_data *data = dev->data;
-	// struct flash_parameters *flash_nand_parameters;
+	ARG_UNUSED(dev);
 
-	// flash_nand_parameters->write_block_size = SPI_NAND_SUB_PAGE_SIZE;
-	// flash_nand_parameters->erase_value = 0xff;
-
-	// return flash_nand_parameters;
+	return &flash_nand_parameters;
 }
+
+#ifdef CONFIG_FLASH_PAGE_LAYOUT
+static void spi_nand_pages_layout(const struct device *dev,
+				  const struct flash_pages_layout **layout,
+				  size_t *layout_size)
+{
+	const struct spi_nand_data *data = dev->data;
+
+	*layout = &data->layout;
+	*layout_size = 1;
+}
+#endif /* CONFIG_FLASH_PAGE_LAYOUT */
 
 static const struct flash_driver_api spi_nand_api = {
 	.read = spi_nand_read,
 	.write = spi_nand_write,
 	.erase = spi_nand_erase,
 	.get_parameters = flash_nand_get_parameters,
+#ifdef CONFIG_FLASH_PAGE_LAYOUT
+	.page_layout = spi_nand_pages_layout,
+#endif
 };
 
 static const struct spi_nand_config spi_nand_config_0 = {
