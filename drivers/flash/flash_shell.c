@@ -544,7 +544,14 @@ static int cmd_erase_write_test(const struct shell *sh, size_t argc, char *argv[
 	while (repeat--) {
 		start_time = k_uptime_get();
 		result_erase = flash_erase(flash_dev, addr, size);
-		result_write = flash_write(flash_dev, addr, test_arr, size);
+		/*
+		 * Writing after a failed erase programs unerased pages, which
+		 * the chip reports as a program failure -- a second, invented
+		 * error that hides the first one.
+		 */
+		if (result_erase == 0) {
+			result_write = flash_write(flash_dev, addr, test_arr, size);
+		}
 		loop_time = k_uptime_delta(&start_time);
 
 		if (result_erase) {
