@@ -259,6 +259,20 @@ static int mxic_uefc_cs_end(const struct device *dev)
 		}
 	}
 
+	/*
+	 * IO_END clears before the controller has actually finished releasing
+	 * the bus, so back-to-back transfers can run into each other.  A
+	 * PROGRAM EXECUTE issued too soon after its PROGRAM LOAD never reaches
+	 * the device: the chip reports PROGRAM_FAIL and the page stays erased.
+	 *
+	 * Found with upstream's spi_nand driver, whose command path is leaner
+	 * than this tree's and so leaves less time between transfers.  This
+	 * driver's own spi_nand does more work per command and mostly gets
+	 * away with it -- but not always, which is the likeliest explanation
+	 * for the intermittent program failures seen during bring-up.
+	 */
+	k_busy_wait(2);
+
 	return 0;
 }
 
