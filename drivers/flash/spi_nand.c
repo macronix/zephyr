@@ -324,17 +324,22 @@ static int spi_nand_read_recovery_mode_set(const struct device *dev, uint8_t rea
 	return ret;
 }
 
+/* Set or clear the chip's continuous-read bit.
+ *
+ * The caller must already hold the device.  This function must not take the
+ * lock itself: spi_nand_read_cont() calls it while holding the device, and
+ * acquire_device() is a plain k_sem_take(K_FOREVER) with no recursion count,
+ * so taking it a second time from the same thread blocks forever.
+ */
 static int spi_nand_conti_read_enable(const struct device *dev, bool conti)
 {
 	int ret;
 	uint8_t secur_reg = 0;
 
-	acquire_device(dev);
-
 	ret = spi_nand_get_feature(dev, SPI_NAND_FEA_ADDR_CONF_B0, &secur_reg);
 	if (ret != 0) {
 		LOG_ERR("get feature failed: %d", ret);
-		goto out;
+		return ret;
 	}
 
 	if (conti) {
@@ -346,24 +351,45 @@ static int spi_nand_conti_read_enable(const struct device *dev, bool conti)
 	ret = spi_nand_set_feature(dev, SPI_NAND_FEA_ADDR_CONF_B0, secur_reg);
 	if (ret != 0) {
 		LOG_ERR("set feature failed: %d", ret);
-		goto out;
+		return ret;
 	}
 
 	ret = spi_nand_get_feature(dev, SPI_NAND_FEA_ADDR_CONF_B0, &secur_reg);
 	if (ret != 0) {
 		LOG_ERR("get feature failed: %d", ret);
-		goto out;
+		return ret;
 	}
 
-	if (!(secur_reg & SPINAND_SECURE_BIT_CONT)) {
-		LOG_ERR("Enable continuous read failed: %d\n", secur_reg);
+	/* Only the enable direction is checked: when clearing the bit its
+	 * absence is the expected outcome, and the original unconditional
+	 * check logged an error on every disable.
+	 */
+	if (conti && !(secur_reg & SPINAND_SECURE_BIT_CONT)) {
+		LOG_ERR("Enable continuous read failed: %02x", secur_reg);
+		return -EIO;
 	}
 
-out:
-	release_device(dev);
 	return ret;
 }
 
+/* Continuous read.
+ *
+ * Datasheet v1.7, 8-3-4 and Table 9 (CONT = 1):
+ *
+ *   - READ FROM CACHE is "03h DUMMY DUMMY DUMMY DATA~".  There is no column
+ *     address; output always starts at byte 0 of the page.
+ *   - A full page (2048 B) must be read for each page, and the spare area is
+ *     not reachable (Table 8).
+ *   - The host terminates by raising CS#, then waits tRST (6 us) for the
+ *     device to reset its read state machine.
+ *
+ * So the whole request is issued as ONE READ FROM CACHE: CS# stays low for
+ * its duration and the device advances from page to page by itself.  That is
+ * the entire point of the mode -- one read latency for the whole transfer.
+ *
+ * The caller (spi_nand_read) guarantees addr is page aligned and size is a
+ * whole number of pages.
+ */
 static int spi_nand_read_cont(const struct device *dev, off_t addr, void *dest,
 			size_t size)
 {
@@ -371,6 +397,15 @@ static int spi_nand_read_cont(const struct device *dev, off_t addr, void *dest,
 	int ret = 0;
 
 	acquire_device(dev);
+
+	/* The chip is left in conventional mode by default, so that
+	 * spi_nand_read_normal() keeps working.  Switch it for this transfer
+	 * only.
+	 */
+	ret = spi_nand_conti_read_enable(dev, true);
+	if (ret != 0) {
+		goto out;
+	}
 
 	ret = spi_nand_access(dev, SPI_NAND_CMD_PAGE_READ,
 		NAND_ACCESS_ADDRESSED | NAND_ACCESS_24BIT_ADDR,
@@ -386,17 +421,35 @@ static int spi_nand_read_cont(const struct device *dev, off_t addr, void *dest,
 		goto out;
 	}
 
+	/* One transfer for the whole request.  The three address bytes are
+	 * dummies in this mode and their value is ignored, so send zero
+	 * rather than a computed address that would only mislead.
+	 */
 	ret = spi_nand_access(dev, SPI_NAND_CMD_READ_CACHE,
 		NAND_ACCESS_ADDRESSED | NAND_ACCESS_24BIT_ADDR,
-		((addr >> data->page_shift) & SPI_NAND_PAGE_MASK), dest, size);
+		0, dest, size);
 	if (ret != 0) {
 		LOG_ERR("read from cache failed: %d", ret);
 		goto out;
 	}
 
-	ret = spi_nand_conti_read_enable(dev, false);
+	/* CS# went high when the transfer above completed; tRST must elapse
+	 * before the device will accept the next command.
+	 */
+	k_busy_wait(6);
 
 out:
+	/* Always restore conventional mode, including on the error paths, so
+	 * the chip state and the driver's assumption cannot diverge.
+	 */
+	{
+		int rc = spi_nand_conti_read_enable(dev, false);
+
+		if (ret == 0) {
+			ret = rc;
+		}
+	}
+
 	release_device(dev);
 
 	return ret;
@@ -533,7 +586,18 @@ static int spi_nand_read(const struct device *dev, off_t addr, void *dest,
 	struct spi_nand_data *data = dev->data;
 
 	if (data->ecc.ecc_bits == 0) {
-		if (data->continuous_read) {
+		/* Continuous read can only serve requests that start on a page
+		 * boundary and cover whole pages -- the device always outputs
+		 * from byte 0 and expects a full page to be clocked out for
+		 * each page (datasheet 8-3-4, Table 8).  Everything else goes
+		 * the conventional way.
+		 */
+		bool cont_ok = data->continuous_read &&
+			       ((addr & SPI_NAND_PAGE_MASK) == 0) &&
+			       (size >= data->page_size) &&
+			       ((size % data->page_size) == 0);
+
+		if (cont_ok) {
 			ret = spi_nand_read_cont(dev, addr, dest, size);
 		} else {
 			ret = spi_nand_read_normal(dev, addr, dest, size);
@@ -922,13 +986,14 @@ out0:
 
 		if ((onfi_table[168] & 0x02) &&
 		    ((const struct spi_nand_config *)dev->config)->support_conti_read) {
+			/* Record the capability only.  The chip is left in
+			 * conventional mode: the two modes use different READ
+			 * FROM CACHE formats, and spi_nand_read_normal() has
+			 * to keep working for requests the continuous path
+			 * cannot serve.  spi_nand_read_cont() switches the
+			 * mode around its own transfer.
+			 */
 			data->continuous_read = true;
-
-			ret = spi_nand_conti_read_enable(dev, true);
-			if (ret != 0) {
-				LOG_ERR("SPI NAND Set continuous read enable Failed: %d", ret);
-				return ret;
-			}
 		} else {
 			data->continuous_read = false;
 		}
